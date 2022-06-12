@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -11,7 +10,15 @@
 
 
 module MyLib
-  ( EffectDB
+  ( EffectDB (..)
+  , runQuery
+  , getQueryResult
+  , withFrozenLastQuery
+  , foldrDB
+  , foldlDB
+  , fetchMany
+  , runEffectDB
+  , main
   ) where
 
 
@@ -24,15 +31,9 @@ import Effectful.Dispatch.Dynamic
 import Effectful.State.Static.Local
 
 import qualified Database.PostgreSQL.PQTypes as PQ
-import qualified Database.PostgreSQL.PQTypes.Class as PQ
-import qualified Database.PostgreSQL.PQTypes.SQL as PQ
-import qualified Database.PostgreSQL.PQTypes.SQL.Class as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
--- import qualified Database.PostgreSQL.PQTypes.Internal.Monad as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
--- import qualified Database.PostgreSQL.PQTypes.Internal.QueryResult as PQ
-import qualified Database.PostgreSQL.PQTypes.Transaction.Settings as PQ
 
 
 data EffectDB :: Effect where
@@ -93,11 +94,11 @@ runEffectDB connectionSource transactionSettings =
         st :: PQ.DBState (Eff es) <- get
         put $ st { PQ.dbRecordLastQuery = False }
         result <- localSeqUnliftIO env $ \unlift -> unlift action
-        modify $ \(st :: PQ.DBState (Eff es)) ->
-          st { PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st }
+        modify $ \(st' :: PQ.DBState (Eff es)) ->
+          st' { PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st }
         pure result
   where
-    runWithState :: (IOE :> es) => Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
+    runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
       PQ.withConnection connectionSource $ \conn -> do
         let dbState0 = mkDBConn conn

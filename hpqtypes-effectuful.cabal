@@ -27,6 +27,10 @@ library
     -- Modules included in this library but not exported.
     -- other-modules:
 
+    ghc-options:
+      -Wall -fno-warn-type-defaults -Wincomplete-record-updates
+      -Wredundant-constraints -Wpartial-fields -Wincomplete-uni-patterns
+
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    base ^>=4.14.3.0
