@@ -54,8 +54,8 @@ getQueryResult :: (EffectDB :> es, PQ.FromRow row) => Eff es (Maybe (PQ.QueryRes
 getQueryResult = send GetQueryResult
 
 
-withFrozenLastyQuery :: (EffectDB :> es) => Eff es a -> Eff es a
-withFrozenLastyQuery = send . WithFrozenLastQuery
+withFrozenLastQuery :: (EffectDB :> es) => Eff es a -> Eff es a
+withFrozenLastQuery = send . WithFrozenLastQuery
 
 
 {-# INLINABLE foldrDB #-}
