@@ -44,45 +44,48 @@ type instance DispatchOf EffectDB = 'Dynamic
 
 
 runEffectDB
-  :: forall es a m. (IOE :> es)
-  -- => ConnectionSourceM m
-  -- -> TransactionSettings
-  => PQ.DBState m
+  :: forall es a. (IOE :> es)
+  => PQ.ConnectionSourceM (Eff es)
+  -> PQ.TransactionSettings
   -> Eff (EffectDB : es) a
   -> Eff es a
-runEffectDB dbState0 =
-  reinterpret (evalState dbState0) $ \_ -> \case
-    RunQuery sql -> do
-      dbState <- get
-      (result, dbState') <- liftBase $ PQ.runQueryIO sql (dbState :: PQ.DBState m)
-      put dbState'
-      pure result
-  -- WithFrozenLastQuery (action :: Eff localEs b) -> do
-  --   -- localSeqUnliftIO env $ \unlift -> unlift action
-  --   localSeqUnliftIO env $ \unlift -> (unlift action :: IO b)
-  --   -- liftIO $ PQ.runDBT undefined undefined $ PQ.withFrozenLastQuery result
+runEffectDB connectionSource transactionSettings =
+    reinterpret runWithState $ \_ -> \case
+      RunQuery sql -> do
+        dbState <- get
+        (result, dbState') <- liftBase $ PQ.runQueryIO sql (dbState :: PQ.DBState (Eff es))
+        put dbState'
+        pure result
+    -- WithFrozenLastQuery (action :: Eff localEs b) -> do
+    --   -- localSeqUnliftIO env $ \unlift -> unlift action
+    --   localSeqUnliftIO env $ \unlift -> (unlift action :: IO b)
+    --   -- liftIO $ PQ.runDBT undefined undefined $ PQ.withFrozenLastQuery result
+  where
+    runWithState :: (IOE :> es) => Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
+    runWithState eff =
+      PQ.withConnection connectionSource $ \conn -> do
+        let dbState0 = mkDBConn conn
+        evalState dbState0 eff :: Eff es a
+    mkDBConn conn = PQ.DBState
+      { PQ.dbConnection = conn
+      , PQ.dbConnectionSource = connectionSource
+      , PQ.dbTransactionSettings = transactionSettings
+      , PQ.dbLastQuery = PQ.SomeSQL (mempty :: PQ.SQL)
+      , PQ.dbRecordLastQuery = True
+      , PQ.dbQueryResult = Nothing
+      }
 
 
 main :: IO ()
 main = do
-  let connectionSettings :: PQ.ConnectionSourceM IO = undefined
+  let connectionSource = PQ.unConnectionSource $ PQ.simpleSource undefined
       transactionSettings :: PQ.TransactionSettings = undefined
-  PQ.withConnection connectionSettings $ \conn -> do
-    let dbState :: PQ.DBState IO = undefined
-          -- PQ.DBState {
-          --   dbConnection = conn
-          -- , dbConnectionSource = cs
-          -- , dbTransactionSettings = ts
-          -- , dbLastQuery = SomeSQL (mempty::SQL)
-          -- , dbRecordLastQuery = True
-          -- , dbQueryResult = Nothing
-          -- }
-        sql1 :: PQ.SQL = PQ.mkSQL ""
-        sql2 :: PQ.SQL = PQ.mkSQL ""
-        program :: Eff '[EffectDB, IOE] ()
-        program = do
-          queryResult1 <- send $ RunQuery sql1
-          liftBase $ print queryResult1
-          queryResult2 <- send $ RunQuery sql2
-          liftBase $ print queryResult2
-    runEff $ runEffectDB dbState program
+      sql1 :: PQ.SQL = PQ.mkSQL ""
+      sql2 :: PQ.SQL = PQ.mkSQL ""
+      program :: Eff '[EffectDB, IOE] ()
+      program = do
+        queryResult1 <- send $ RunQuery sql1
+        liftBase $ print queryResult1
+        queryResult2 <- send $ RunQuery sql2
+        liftBase $ print queryResult2
+  runEff $ runEffectDB connectionSource transactionSettings program
