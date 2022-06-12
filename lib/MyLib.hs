@@ -16,7 +16,7 @@ module MyLib
 
 
 import Control.Monad.Base (liftBase)
-import Data.Int (Int64)
+import Data.Int (Int32)
 import qualified Data.Foldable as F
 
 import Effectful
@@ -108,6 +108,6 @@ main = do
       program = do
         rowNo <- send $ RunQuery sql
         liftBase $ putStr "Row number: " >> print rowNo
-        queryResult :: [Int64] <- fetchMany PQ.runIdentity
+        queryResult :: [Int32] <- fetchMany PQ.runIdentity
         liftBase $ putStr "Result(s): " >> print queryResult
   runEff $ runEffectDB connectionSource transactionSettings program
