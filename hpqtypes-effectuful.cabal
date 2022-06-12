@@ -29,7 +29,7 @@ library
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.14.3.0
+    build-depends:    base
                     , effectful == 0.1.*
                     , hpqtypes == 1.9.4.0
                     , transformers-base

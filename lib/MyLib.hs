@@ -16,6 +16,8 @@ module MyLib
 
 
 import Control.Monad.Base (liftBase)
+import Data.Int (Int64)
+import qualified Data.Foldable as F
 
 import Effectful
 import Effectful.Dispatch.Dynamic
@@ -35,12 +37,29 @@ import qualified Database.PostgreSQL.PQTypes.Transaction.Settings as PQ
 
 data EffectDB :: Effect where
   RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
+  GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
+  -- GetQueryResult :: EffectDB m Bool
   -- RunPreparedQuery :: IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
   -- GetLastQuery :: EffectDB m SomeSQL
   -- WithFrozenLastQuery :: m a -> EffectDB m a
 
 
 type instance DispatchOf EffectDB = 'Dynamic
+
+
+{-# INLINABLE foldrDB #-}
+foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
+foldrDB f acc = maybe (return acc) (F.foldrM f acc) =<< send GetQueryResult
+
+
+{-# INLINABLE foldlDB #-}
+foldlDB :: (PQ.FromRow row, EffectDB :> es) => (acc -> row -> Eff es acc) -> acc -> Eff es acc
+foldlDB f acc = maybe (return acc) (F.foldlM f acc) =<< send GetQueryResult
+
+
+{-# INLINABLE fetchMany #-}
+fetchMany :: (PQ.FromRow row, EffectDB :> es) => (row -> t) -> Eff es [t]
+fetchMany f = foldrDB (\row acc -> return $ f row : acc) []
 
 
 runEffectDB
@@ -56,6 +75,10 @@ runEffectDB connectionSource transactionSettings =
         (result, dbState') <- liftBase $ PQ.runQueryIO sql (dbState :: PQ.DBState (Eff es))
         put dbState'
         pure result
+      GetQueryResult -> do
+        dbState :: PQ.DBState (Eff es) <- get
+        pure $ PQ.dbQueryResult dbState
+
     -- WithFrozenLastQuery (action :: Eff localEs b) -> do
     --   -- localSeqUnliftIO env $ \unlift -> unlift action
     --   localSeqUnliftIO env $ \unlift -> (unlift action :: IO b)
@@ -79,13 +102,12 @@ runEffectDB connectionSource transactionSettings =
 main :: IO ()
 main = do
   let connectionSource = PQ.unConnectionSource $ PQ.simpleSource undefined
-      transactionSettings :: PQ.TransactionSettings = undefined
-      sql1 :: PQ.SQL = PQ.mkSQL ""
-      sql2 :: PQ.SQL = PQ.mkSQL ""
+      transactionSettings = PQ.defaultTransactionSettings
+      sql :: PQ.SQL = PQ.mkSQL "SELECT 1"
       program :: Eff '[EffectDB, IOE] ()
       program = do
-        queryResult1 <- send $ RunQuery sql1
-        liftBase $ print queryResult1
-        queryResult2 <- send $ RunQuery sql2
-        liftBase $ print queryResult2
+        rowNo <- send $ RunQuery sql
+        liftBase $ putStr "Row number: " >> print rowNo
+        queryResult :: [Int64] <- fetchMany PQ.runIdentity
+        liftBase $ putStr "Result(s): " >> print queryResult
   runEff $ runEffectDB connectionSource transactionSettings program
