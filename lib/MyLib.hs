@@ -16,39 +16,25 @@ module MyLib
 
 
 import Control.Monad.Base (liftBase)
-import Effectful
-import Database.PostgreSQL.PQTypes.SQL.Class (IsSQL)
-import Database.PostgreSQL.PQTypes (SomeSQL)
-import Database.PostgreSQL.PQTypes.Internal.Connection (ConnectionStats, withConnection)
-import qualified Database.PostgreSQL.PQTypes.SQL.Class as PQ
-import qualified Database.PostgreSQL.PQTypes.Class as PQ
-import Database.PostgreSQL.PQTypes.Internal.Monad (runDBT, DBT)
-import qualified Database.PostgreSQL.PQTypes.SQL as PQ
 
-import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
-import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
+import Effectful
+import Effectful.Dispatch.Dynamic
 import Effectful.State.Static.Local
 
-import Database.PostgreSQL.PQTypes.Internal.QueryResult (QueryResult)
-
-import Effectful.Dispatch.Dynamic
-import Database.PostgreSQL.PQTypes.Internal.Connection (ConnectionSourceM)
-import Database.PostgreSQL.PQTypes.Transaction.Settings (TransactionSettings)
-
-
--- data DBE :: Effect where
---   DBE :: DBT IO a -> DBE m a
-
-
--- type instance DispatchOf DBE = 'Dynamic
-
-
--- runDBE :: (IOE :> es) => Eff (DBE : es) a -> Eff es a
--- runDBE = undefined
+import qualified Database.PostgreSQL.PQTypes as PQ
+import qualified Database.PostgreSQL.PQTypes.Class as PQ
+import qualified Database.PostgreSQL.PQTypes.SQL as PQ
+import qualified Database.PostgreSQL.PQTypes.SQL.Class as PQ
+import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
+-- import qualified Database.PostgreSQL.PQTypes.Internal.Monad as PQ
+import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
+import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
+-- import qualified Database.PostgreSQL.PQTypes.Internal.QueryResult as PQ
+import qualified Database.PostgreSQL.PQTypes.Transaction.Settings as PQ
 
 
 data EffectDB :: Effect where
-  RunQuery :: IsSQL sql => sql -> EffectDB m Int
+  RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
   -- RunPreparedQuery :: IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
   -- GetLastQuery :: EffectDB m SomeSQL
   -- WithFrozenLastQuery :: m a -> EffectDB m a
@@ -74,25 +60,14 @@ runEffectDB dbState0 =
   -- WithFrozenLastQuery (action :: Eff localEs b) -> do
   --   -- localSeqUnliftIO env $ \unlift -> unlift action
   --   localSeqUnliftIO env $ \unlift -> (unlift action :: IO b)
-  --   -- liftIO $ runDBT undefined undefined $ PQ.withFrozenLastQuery result
-
-
--- runEffectDB
---   :: forall es a. (IOE :> es)
---   => Eff (EffectDB : es) a
---   -> Eff es a
--- runEffectDB = interpret $ \env -> \case
---   RunQuery sql -> send . DBE $ PQ.runQuery sql
---   WithFrozenLastQuery (action :: Eff localEs b) -> do
---     localSeqUnlift env $ \unlift -> PQ.withFrozenLastQuery (unlift action :: Eff es b)
---     -- liftIO $ runDBT undefined undefined $ PQ.withFrozenLastQuery result
+  --   -- liftIO $ PQ.runDBT undefined undefined $ PQ.withFrozenLastQuery result
 
 
 main :: IO ()
 main = do
-  let connectionSettings :: ConnectionSourceM IO = undefined
-      transactionSettings :: TransactionSettings = undefined
-  withConnection connectionSettings $ \conn -> do
+  let connectionSettings :: PQ.ConnectionSourceM IO = undefined
+      transactionSettings :: PQ.TransactionSettings = undefined
+  PQ.withConnection connectionSettings $ \conn -> do
     let dbState :: PQ.DBState IO = undefined
           -- PQ.DBState {
           --   dbConnection = conn
