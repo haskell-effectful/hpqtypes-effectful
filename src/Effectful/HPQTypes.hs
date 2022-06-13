@@ -17,6 +17,8 @@ module Effectful.HPQTypes
   , foldlDB
   , fetchMany
   , runEffectDB
+  , getTransactionSettings
+  , setTransactionSettings
   )
 where
 
@@ -38,6 +40,8 @@ data EffectDB :: Effect where
   GetConnectionStats :: EffectDB m PQ.ConnectionStats
   RunPreparedQuery :: PQ.IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
   GetLastQuery :: EffectDB m PQ.SomeSQL
+  GetTransactionSettings :: EffectDB m PQ.TransactionSettings
+  SetTransactionSettings :: PQ.TransactionSettings -> EffectDB m ()
   WithFrozenLastQuery :: m a -> EffectDB m a
 
 type instance DispatchOf EffectDB = 'Dynamic
@@ -50,6 +54,12 @@ getQueryResult = send GetQueryResult
 
 withFrozenLastQuery :: (EffectDB :> es) => Eff es a -> Eff es a
 withFrozenLastQuery = send . WithFrozenLastQuery
+
+setTransactionSettings :: (EffectDB :> es) => PQ.TransactionSettings -> Eff es ()
+setTransactionSettings = send . SetTransactionSettings
+
+getTransactionSettings :: (EffectDB :> es) => Eff es PQ.TransactionSettings
+getTransactionSettings = send $ GetTransactionSettings
 
 {-# INLINEABLE foldrDB #-}
 foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
@@ -101,6 +111,11 @@ runEffectDB connectionSource transactionSettings =
     GetLastQuery -> do
       dbState :: PQ.DBState (Eff es) <- get
       pure $ PQ.dbLastQuery dbState
+    GetTransactionSettings -> do
+      dbState :: PQ.DBState (Eff es) <- get
+      pure $ PQ.dbTransactionSettings dbState
+    SetTransactionSettings settings -> modify $ \(st' :: PQ.DBState (Eff es)) ->
+      st' {PQ.dbTransactionSettings = settings}
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
