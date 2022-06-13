@@ -100,7 +100,7 @@ runEffectDB connectionSource transactionSettings =
       WithFrozenLastQuery (action :: Eff localEs b) -> do
         st :: PQ.DBState (Eff es) <- get
         put st { PQ.dbRecordLastQuery = False }
-        result <- localSeqUnliftIO env $ \unlift -> unlift action
+        result <- localSeqUnlift env $ \unlift -> unlift action
         modify $ \(st' :: PQ.DBState (Eff es)) ->
           st' { PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st }
         pure result
