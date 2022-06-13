@@ -34,7 +34,7 @@ library
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   build-depends:
-      base >= 4.13 && < 5
+    , base               >=4.13    && <5
     , containers
     , effectful          ^>=0.1
     , exceptions
@@ -46,15 +46,16 @@ library
   default-language: Haskell2010
 
 test-suite hpqtypes-effectful-tests
-    type:              exitcode-stdio-1.0
-    ghc-options:       -Wall -threaded
-
-    hs-source-dirs:    test
-    main-is:           Main.hs
-    build-depends:       effectful-hpqtypes
-                       , effectful == 0.1.*
-                       , hpqtypes == 1.9.4.0
-                       , transformers-base
-                       , base >= 4.13 && < 5
-                       , hpqtypes == 1.9.4.0
-                       , text
+  type:           exitcode-stdio-1.0
+  ghc-options:    -Wall -threaded
+  hs-source-dirs: test
+  main-is:        Main.hs
+  build-depends:
+    , base                >=4.13    && <5
+    , effectful           ^>=0.1
+    , effectful-hpqtypes
+    , hpqtypes            ==1.9.4.0
+    , tasty
+    , tasty-hunit
+    , text
+    , transformers-base
