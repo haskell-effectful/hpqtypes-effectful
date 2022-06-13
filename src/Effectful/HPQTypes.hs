@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE Rank2Types #-}
 
 module Effectful.HPQTypes
   ( EffectDB (..)
@@ -78,14 +79,20 @@ foldlDB f acc = maybe (return acc) (F.foldlM f acc) =<< getQueryResult
 fetchMany :: (PQ.FromRow row, EffectDB :> es) => (row -> t) -> Eff es [t]
 fetchMany f = foldrDB (\row acc -> return $ f row : acc) []
 
+newtype ConnectionSourceM = ConnectionSourceM
+  { unConnectionSourceM :: forall m. PQ.ConnectionSourceM m
+  }
+
 runEffectDB ::
   forall es a.
   (IOE :> es, Error PQ.HPQTypesError :> es) =>
-  PQ.ConnectionSourceM (Eff es) ->
+  -- (forall m. PQ.ConnectionSourceM m) ->
+  -- PQ.ConnectionSourceM (Eff es) ->
+  ConnectionSourceM ->
   PQ.TransactionSettings ->
   Eff (EffectDB : es) a ->
   Eff es a
-runEffectDB connectionSource transactionSettings =
+runEffectDB (ConnectionSourceM connectionSource) transactionSettings =
   reinterpret runWithState $ \env -> \case
     RunQuery sql -> do
       dbState <- get
@@ -123,9 +130,20 @@ runEffectDB connectionSource transactionSettings =
       st' {PQ.dbTransactionSettings = settings}
     WithNewConnection (action :: Eff localEs b) -> do
       dbState :: PQ.DBState (Eff es) <- get
-      result <- runWithState _h
-      put dbState
-      pure result
+      let cs = undefined
+            :: PQ.ConnectionSourceM (Eff (State (PQ.DBState (Eff es)) : es))
+          cs' = PQ.dbConnectionSource dbState
+            :: PQ.ConnectionSourceM (Eff es)
+          ts = PQ.dbTransactionSettings dbState
+      runEffectDB (ConnectionSourceM connectionSource) ts
+        $ localSeqUnlift env
+        $ \unlift -> unlift action
+      -- By using unlifting we get from:
+      --   localEs
+      -- to
+      --              State (PQ.DBState (Eff es)) : es
+      -- but we would like to get to:
+      --   EffectDB : State (PQ.DBState (Eff es)) : es
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
