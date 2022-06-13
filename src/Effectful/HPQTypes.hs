@@ -36,7 +36,8 @@ data EffectDB :: Effect where
   RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
   GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
   GetConnectionStats :: EffectDB m PQ.ConnectionStats
-  -- RunPreparedQuery :: IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
+  RunPreparedQuery :: PQ.IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
+  -- GetQueryResult :: EffectDB m Bool
   -- GetLastQuery :: EffectDB m SomeSQL
   WithFrozenLastQuery :: m a -> EffectDB m a
 
@@ -71,28 +72,33 @@ runEffectDB ::
   Eff (EffectDB : es) a ->
   Eff es a
 runEffectDB connectionSource transactionSettings =
-  reinterpret runWithState $ \env -> \case
-    RunQuery sql -> do
-      dbState <- get
-      (result, dbState') <- liftBase $ PQ.runQueryIO sql (dbState :: PQ.DBState (Eff es))
-      put dbState'
-      pure result
-    GetQueryResult -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      pure $ PQ.dbQueryResult dbState
-    WithFrozenLastQuery (action :: Eff localEs b) -> do
-      st :: PQ.DBState (Eff es) <- get
-      put st {PQ.dbRecordLastQuery = False}
-      result <- localSeqUnlift env $ \unlift -> unlift action
-      modify $ \(st' :: PQ.DBState (Eff es)) ->
-        st' {PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st}
-      pure result
-    GetConnectionStats -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState
-      case mconn of
-        Nothing -> throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
-        Just cd -> return $ PQ.cdStats cd
+    reinterpret runWithState $ \env -> \case
+      RunQuery sql -> do
+        dbState <- get
+        (result, dbState') <- liftBase $ PQ.runQueryIO sql (dbState :: PQ.DBState (Eff es))
+        put dbState'
+        pure result
+      GetQueryResult -> do
+        dbState :: PQ.DBState (Eff es) <- get
+        pure $ PQ.dbQueryResult dbState
+      WithFrozenLastQuery (action :: Eff localEs b) -> do
+        st :: PQ.DBState (Eff es) <- get
+        put st { PQ.dbRecordLastQuery = False }
+        result <- localSeqUnlift env $ \unlift -> unlift action
+        modify $ \(st' :: PQ.DBState (Eff es)) ->
+          st' { PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st }
+        pure result
+      GetConnectionStats -> do
+        dbState :: PQ.DBState (Eff es) <- get
+        mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState 
+        case mconn of
+          Nothing -> throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
+          Just cd -> return $ PQ.cdStats cd
+      RunPreparedQuery queryName sql -> do
+        dbState <- get
+        (result, dbState') <- liftBase $ PQ.runPreparedQueryIO queryName sql (dbState :: PQ.DBState (Eff es))
+        put dbState'
+        pure result
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
