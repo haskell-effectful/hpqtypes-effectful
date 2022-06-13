@@ -10,14 +10,14 @@
 {-# LANGUAGE TypeOperators #-}
 
 module MyLib
-  ( EffectDB (..)
-  , runQuery
-  , getQueryResult
-  , withFrozenLastQuery
-  , foldrDB
-  , foldlDB
-  , fetchMany
-  , runEffectDB
+  ( EffectDB (..),
+    runQuery,
+    getQueryResult,
+    withFrozenLastQuery,
+    foldrDB,
+    foldlDB,
+    fetchMany,
+    runEffectDB,
   )
 where
 
@@ -109,4 +109,3 @@ runEffectDB connectionSource transactionSettings =
         , PQ.dbRecordLastQuery = True
         , PQ.dbQueryResult = Nothing
         }
-

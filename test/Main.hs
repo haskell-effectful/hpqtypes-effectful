@@ -1,21 +1,19 @@
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Main (main)
-where
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+
+module Main (main) where
 
 import Control.Monad.Base (liftBase)
 import Data.Int (Int32)
-
+import qualified Data.Text as T
+import qualified Database.PostgreSQL.PQTypes as PQ
 import Effectful
 import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
 import MyLib
 import System.Environment (getEnv)
-
-import qualified Data.Text as T
-import qualified Database.PostgreSQL.PQTypes as PQ
 
 main :: IO ()
 main = do
