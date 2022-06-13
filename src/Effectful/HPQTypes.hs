@@ -144,6 +144,7 @@ runEffectDB connectionSource transactionSettings =
       st' {PQ.dbTransactionSettings = settings}
     WithNewConnection (action :: Eff localEs b) -> do
       dbState :: PQ.DBState (Eff es) <- get
+      -- TODO: Try using @PQ.dbConnectionSource dbState@ as in the original code
       runEffectDB connectionSource (PQ.dbTransactionSettings dbState) $
         localSeqUnlift env $
           \unlift -> unlift action
