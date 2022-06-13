@@ -5,20 +5,13 @@
 
 module Main (main) where
 
-<<<<<<< HEAD
-import Control.Exception (assert)
 import Control.Monad (void)
-||||||| f18db59
-=======
-import Control.Monad (void)
->>>>>>> main
 import Control.Monad.Base (liftBase)
 import Data.Int (Int32)
 import qualified Data.Text as T
 import qualified Database.PostgreSQL.PQTypes as PQ
 import Database.PostgreSQL.PQTypes.SQL.Class
 import Effectful
-import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
 import Effectful.HPQTypes
 import System.Environment (getEnv)
@@ -51,11 +44,11 @@ testPrintConnectionStats = do
         connectionStats <- getConnectionStats
         liftBase $ putStr "Connection stats: " >> print connectionStats
 
-        (SomeSQL lq) <- send $ GetLastQuery
+        (SomeSQL lq) <- getLastQuery
         withFrozenLastQuery $ do
           let newSQL = "SELECT 2"
           void . runQuery $ PQ.mkSQL newSQL
-          (SomeSQL newLq) <- send $ GetLastQuery
-          void . return $ assert ((T.pack $ show newLq) == newSQL)
-        void . return $ assert ((T.pack $ show lq) == sql)
+          (SomeSQL newLq) <- getLastQuery
+          liftIO $ assertEqual "SQL don't match" (show newLq) (show $ PQ.mkSQL sql)
+        liftIO $ assertEqual "SQL don't match" (show lq) (show $ PQ.mkSQL sql)
   (runEff . runErrorNoCallStack @PQ.HPQTypesError $ runEffectDB connectionSource transactionSettings program) >>= print
