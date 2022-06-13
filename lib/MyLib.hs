@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -29,16 +30,22 @@ import qualified Data.Foldable as F
 import Effectful
 import Effectful.Dispatch.Dynamic
 import Effectful.State.Static.Local
+import Effectful.Error.Static
+import Control.Concurrent.MVar
+import System.Environment (getEnv)
 
+import qualified Data.Text as T
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
 
 
+
 data EffectDB :: Effect where
   RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
   GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
+  GetConnectionStats :: EffectDB m PQ.ConnectionStats
   -- RunPreparedQuery :: IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
   -- GetLastQuery :: EffectDB m SomeSQL
   WithFrozenLastQuery :: m a -> EffectDB m a
@@ -75,7 +82,7 @@ fetchMany f = foldrDB (\row acc -> return $ f row : acc) []
 
 
 runEffectDB
-  :: forall es a. (IOE :> es)
+  :: forall es a. (IOE :> es, Error PQ.HPQTypesError :> es)
   => PQ.ConnectionSourceM (Eff es)
   -> PQ.TransactionSettings
   -> Eff (EffectDB : es) a
@@ -97,6 +104,12 @@ runEffectDB connectionSource transactionSettings =
         modify $ \(st' :: PQ.DBState (Eff es)) ->
           st' { PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st }
         pure result
+      GetConnectionStats -> do
+        dbState :: PQ.DBState (Eff es) <- get
+        mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState 
+        case mconn of
+          Nothing -> throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
+          Just cd -> return $ PQ.cdStats cd
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
@@ -115,13 +128,16 @@ runEffectDB connectionSource transactionSettings =
 
 main :: IO ()
 main = do
-  let connectionSource = PQ.unConnectionSource $ PQ.simpleSource undefined
+  dbUrl <- T.pack <$> getEnv "DATABASE_URL"
+  let connectionSource = PQ.unConnectionSource $ PQ.simpleSource $ PQ.ConnectionSettings dbUrl Nothing []
       transactionSettings = PQ.defaultTransactionSettings
       sql :: PQ.SQL = PQ.mkSQL "SELECT 1"
-      program :: Eff '[EffectDB, IOE] ()
+      program :: Eff '[EffectDB, Error PQ.HPQTypesError, IOE] ()
       program = do
         rowNo <- runQuery sql
         liftBase $ putStr "Row number: " >> print rowNo
         queryResult :: [Int32] <- fetchMany PQ.runIdentity
         liftBase $ putStr "Result(s): " >> print queryResult
-  runEff $ runEffectDB connectionSource transactionSettings program
+        connectionStats <- send $ GetConnectionStats
+        liftBase $ putStr "Connection stats: " >> print connectionStats
+  (runEff . runErrorNoCallStack @PQ.HPQTypesError $ runEffectDB connectionSource transactionSettings program) >>= print
