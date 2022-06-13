@@ -19,6 +19,7 @@ module Effectful.HPQTypes
   , runEffectDB
   , getTransactionSettings
   , setTransactionSettings
+  , withNewConnection
   )
 where
 
@@ -43,6 +44,7 @@ data EffectDB :: Effect where
   GetTransactionSettings :: EffectDB m PQ.TransactionSettings
   SetTransactionSettings :: PQ.TransactionSettings -> EffectDB m ()
   WithFrozenLastQuery :: m a -> EffectDB m a
+  WithNewConnection :: m a -> EffectDB m a
 
 type instance DispatchOf EffectDB = 'Dynamic
 
@@ -60,6 +62,9 @@ setTransactionSettings = send . SetTransactionSettings
 
 getTransactionSettings :: (EffectDB :> es) => Eff es PQ.TransactionSettings
 getTransactionSettings = send $ GetTransactionSettings
+
+withNewConnection :: (EffectDB :> es) => Eff es a -> Eff es a
+withNewConnection = send . WithNewConnection
 
 {-# INLINEABLE foldrDB #-}
 foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
@@ -116,6 +121,11 @@ runEffectDB connectionSource transactionSettings =
       pure $ PQ.dbTransactionSettings dbState
     SetTransactionSettings settings -> modify $ \(st' :: PQ.DBState (Eff es)) ->
       st' {PQ.dbTransactionSettings = settings}
+    WithNewConnection (action :: Eff localEs b) -> do
+      dbState :: PQ.DBState (Eff es) <- get
+      result <- runWithState _h
+      put dbState
+      pure result
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
