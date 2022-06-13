@@ -1,0 +1,44 @@
+name: Build
+
+on: [push]
+
+jobs:
+  fourmolu-formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: fourmolu/fourmolu-action@v1
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        ghc: ['8.10.7', '9.2.3']
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+      # os: [ubuntu-latest, macOS-latest, windows-latest]
+    name: Haskell GHC ${{ matrix.ghc }} on ${{ matrix.os }}
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Haskell
+        uses: haskell/actions/setup@v2
+        with:
+          ghc-version: ${{ matrix.ghc }}
+          cabal-version: ${{ matrix.cabal }}
+      - name: Cabal test
+        env:
+          DATABASE_URL: "host=postgres user=postgres password=postgres"
+        run: cabal test
