@@ -7,7 +7,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE Rank2Types #-}
 
 module Effectful.HPQTypes
   ( EffectDB (..)
@@ -29,7 +28,7 @@ module Effectful.HPQTypes
 where
 
 import Control.Concurrent.MVar
-import Control.Monad.Base (liftBase, MonadBase)
+import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Catch (MonadMask)
 import qualified Data.Foldable as F
 import qualified Database.PostgreSQL.PQTypes as PQ
@@ -145,9 +144,9 @@ runEffectDB connectionSource transactionSettings =
       st' {PQ.dbTransactionSettings = settings}
     WithNewConnection (action :: Eff localEs b) -> do
       dbState :: PQ.DBState (Eff es) <- get
-      runEffectDB connectionSource (PQ.dbTransactionSettings dbState)
-        $ localSeqUnlift env
-        $ \unlift -> unlift action
+      runEffectDB connectionSource (PQ.dbTransactionSettings dbState) $
+        localSeqUnlift env $
+          \unlift -> unlift action
     GetNotification time -> do
       dbState :: PQ.DBState (Eff es) <- get
       liftBase $ PQ.getNotificationIO dbState time

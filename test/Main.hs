@@ -2,11 +2,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 
 module Main (main) where
 
-import Control.Monad.Base (liftBase, MonadBase)
+import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Catch (MonadMask)
 import Data.Int (Int32)
 import qualified Data.Text as T
