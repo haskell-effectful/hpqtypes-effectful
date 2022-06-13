@@ -15,9 +15,20 @@ import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
 import Effectful.HPQTypes
 import System.Environment (getEnv)
+import Test.Tasty
+import Test.Tasty.HUnit
 
 main :: IO ()
-main = do
+main = defaultMain tests
+
+tests :: TestTree
+tests =
+  testGroup
+    "tests"
+    [testCase "test PrintConnectionStats" testPrintConnectionStats]
+
+testPrintConnectionStats :: Assertion
+testPrintConnectionStats = do
   dbUrl <- T.pack <$> getEnv "DATABASE_URL"
   let connectionSource :: PQ.ConnectionSource [MonadBase IO, MonadMask]
       connectionSource = PQ.simpleSource $ PQ.ConnectionSettings dbUrl Nothing []
@@ -29,6 +40,6 @@ main = do
         liftBase $ putStr "Row number: " >> print rowNo
         queryResult :: [Int32] <- fetchMany PQ.runIdentity
         liftBase $ putStr "Result(s): " >> print queryResult
-        connectionStats <- send $ GetConnectionStats
+        connectionStats <- send GetConnectionStats
         liftBase $ putStr "Connection stats: " >> print connectionStats
   (runEff . runErrorNoCallStack @PQ.HPQTypesError $ runEffectDB connectionSource transactionSettings program) >>= print

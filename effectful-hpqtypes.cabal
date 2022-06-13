@@ -56,5 +56,7 @@ test-suite hpqtypes-effectful-tests
     , effectful-hpqtypes
     , exceptions
     , hpqtypes            ==1.9.4.0
+    , tasty
+    , tasty-hunit
     , text
     , transformers-base
