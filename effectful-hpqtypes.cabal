@@ -51,7 +51,7 @@ test-suite hpqtypes-effectful-tests
 
     hs-source-dirs:    test
     main-is:           Main.hs
-    build-depends:       hpqtypes-effectuful
+    build-depends:       effectful-hpqtypes
                        , effectful == 0.1.*
                        , hpqtypes == 1.9.4.0
                        , transformers-base

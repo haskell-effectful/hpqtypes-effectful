@@ -12,7 +12,7 @@ import qualified Database.PostgreSQL.PQTypes as PQ
 import Effectful
 import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
-import MyLib
+import Effectful.HPQTypes
 import System.Environment (getEnv)
 
 main :: IO ()
