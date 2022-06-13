@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE LambdaCase #-}
@@ -12,7 +11,15 @@
 
 
 module MyLib
-  ( EffectDB
+  ( EffectDB (..)
+  , runQuery
+  , getQueryResult
+  , withFrozenLastQuery
+  , foldrDB
+  , foldlDB
+  , fetchMany
+  , runEffectDB
+  , main
   ) where
 
 
@@ -29,15 +36,9 @@ import System.Environment (getEnv)
 
 import qualified Data.Text as T
 import qualified Database.PostgreSQL.PQTypes as PQ
-import qualified Database.PostgreSQL.PQTypes.Class as PQ
-import qualified Database.PostgreSQL.PQTypes.SQL as PQ
-import qualified Database.PostgreSQL.PQTypes.SQL.Class as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
--- import qualified Database.PostgreSQL.PQTypes.Internal.Monad as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
--- import qualified Database.PostgreSQL.PQTypes.Internal.QueryResult as PQ
-import qualified Database.PostgreSQL.PQTypes.Transaction.Settings as PQ
 
 
 
@@ -45,23 +46,34 @@ data EffectDB :: Effect where
   RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
   GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
   GetConnectionStats :: EffectDB m PQ.ConnectionStats
-  -- GetQueryResult :: EffectDB m Bool
   -- RunPreparedQuery :: IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
   -- GetLastQuery :: EffectDB m SomeSQL
-  -- WithFrozenLastQuery :: m a -> EffectDB m a
+  WithFrozenLastQuery :: m a -> EffectDB m a
 
 
 type instance DispatchOf EffectDB = 'Dynamic
 
 
+runQuery :: (EffectDB :> es, PQ.IsSQL sql) => sql -> Eff es Int
+runQuery = send . RunQuery
+
+
+getQueryResult :: (EffectDB :> es, PQ.FromRow row) => Eff es (Maybe (PQ.QueryResult row))
+getQueryResult = send GetQueryResult
+
+
+withFrozenLastQuery :: (EffectDB :> es) => Eff es a -> Eff es a
+withFrozenLastQuery = send . WithFrozenLastQuery
+
+
 {-# INLINABLE foldrDB #-}
 foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
-foldrDB f acc = maybe (return acc) (F.foldrM f acc) =<< send GetQueryResult
+foldrDB f acc = maybe (return acc) (F.foldrM f acc) =<< getQueryResult
 
 
 {-# INLINABLE foldlDB #-}
 foldlDB :: (PQ.FromRow row, EffectDB :> es) => (acc -> row -> Eff es acc) -> acc -> Eff es acc
-foldlDB f acc = maybe (return acc) (F.foldlM f acc) =<< send GetQueryResult
+foldlDB f acc = maybe (return acc) (F.foldlM f acc) =<< getQueryResult
 
 
 {-# INLINABLE fetchMany #-}
@@ -76,7 +88,7 @@ runEffectDB
   -> Eff (EffectDB : es) a
   -> Eff es a
 runEffectDB connectionSource transactionSettings =
-    reinterpret runWithState $ \_ -> \case
+    reinterpret runWithState $ \env -> \case
       RunQuery sql -> do
         dbState <- get
         (result, dbState') <- liftBase $ PQ.runQueryIO sql (dbState :: PQ.DBState (Eff es))
@@ -85,19 +97,21 @@ runEffectDB connectionSource transactionSettings =
       GetQueryResult -> do
         dbState :: PQ.DBState (Eff es) <- get
         pure $ PQ.dbQueryResult dbState
+      WithFrozenLastQuery (action :: Eff localEs b) -> do
+        st :: PQ.DBState (Eff es) <- get
+        put st { PQ.dbRecordLastQuery = False }
+        result <- localSeqUnlift env $ \unlift -> unlift action
+        modify $ \(st' :: PQ.DBState (Eff es)) ->
+          st' { PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st }
+        pure result
       GetConnectionStats -> do
         dbState :: PQ.DBState (Eff es) <- get
         mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState 
         case mconn of
           Nothing -> throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
           Just cd -> return $ PQ.cdStats cd
-
-    -- WithFrozenLastQuery (action :: Eff localEs b) -> do
-    --   -- localSeqUnliftIO env $ \unlift -> unlift action
-    --   localSeqUnliftIO env $ \unlift -> (unlift action :: IO b)
-    --   -- liftIO $ PQ.runDBT undefined undefined $ PQ.withFrozenLastQuery result
   where
-    runWithState :: (IOE :> es) => Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
+    runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
       PQ.withConnection connectionSource $ \conn -> do
         let dbState0 = mkDBConn conn
@@ -120,7 +134,7 @@ main = do
       sql :: PQ.SQL = PQ.mkSQL "SELECT 1"
       program :: Eff '[EffectDB, Error PQ.HPQTypesError, IOE] ()
       program = do
-        rowNo <- send $ RunQuery sql
+        rowNo <- runQuery sql
         liftBase $ putStr "Row number: " >> print rowNo
         queryResult :: [Int32] <- fetchMany PQ.runIdentity
         liftBase $ putStr "Result(s): " >> print queryResult
