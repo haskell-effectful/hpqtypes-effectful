@@ -13,7 +13,11 @@ module Effectful.HPQTypes
   ( EffectDB (..)
   , runQuery
   , getQueryResult
+  , getConnectionStats
+  , runPreparedQuery
+  , getLastQuery
   , withFrozenLastQuery
+  , getNotification
   , foldrDB
   , foldlDB
   , fetchMany
@@ -25,10 +29,12 @@ module Effectful.HPQTypes
 where
 
 import Control.Concurrent.MVar
-import Control.Monad.Base (liftBase)
+import Control.Monad.Base (liftBase, MonadBase)
+import Control.Monad.Catch (MonadMask)
 import qualified Data.Foldable as F
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
+import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import Effectful
@@ -46,6 +52,7 @@ data EffectDB :: Effect where
   SetTransactionSettings :: PQ.TransactionSettings -> EffectDB m ()
   WithFrozenLastQuery :: m a -> EffectDB m a
   WithNewConnection :: m a -> EffectDB m a
+  GetNotification :: Int -> EffectDB m (Maybe PQ.Notification)
 
 type instance DispatchOf EffectDB = 'Dynamic
 
@@ -55,14 +62,28 @@ runQuery = send . RunQuery
 getQueryResult :: (EffectDB :> es, PQ.FromRow row) => Eff es (Maybe (PQ.QueryResult row))
 getQueryResult = send GetQueryResult
 
-withFrozenLastQuery :: (EffectDB :> es) => Eff es a -> Eff es a
+getConnectionStats :: EffectDB :> es => Eff es PQ.ConnectionStats
+getConnectionStats = send GetConnectionStats
+
+runPreparedQuery :: (EffectDB :> es, PQ.IsSQL sql) => PQ.QueryName -> sql -> Eff es Int
+runPreparedQuery = send ... RunPreparedQuery
+  where
+    (...) = (.) . (.)
+
+getLastQuery :: EffectDB :> es => Eff es PQ.SomeSQL
+getLastQuery = send GetLastQuery
+
+withFrozenLastQuery :: EffectDB :> es => Eff es a -> Eff es a
 withFrozenLastQuery = send . WithFrozenLastQuery
 
-setTransactionSettings :: (EffectDB :> es) => PQ.TransactionSettings -> Eff es ()
+setTransactionSettings :: EffectDB :> es => PQ.TransactionSettings -> Eff es ()
 setTransactionSettings = send . SetTransactionSettings
 
-getTransactionSettings :: (EffectDB :> es) => Eff es PQ.TransactionSettings
-getTransactionSettings = send $ GetTransactionSettings
+getTransactionSettings :: EffectDB :> es => Eff es PQ.TransactionSettings
+getTransactionSettings = send GetTransactionSettings
+
+getNotification :: EffectDB :> es => Int -> Eff es (Maybe PQ.Notification)
+getNotification = send . GetNotification
 
 withNewConnection :: (EffectDB :> es) => Eff es a -> Eff es a
 withNewConnection = send . WithNewConnection
@@ -79,20 +100,14 @@ foldlDB f acc = maybe (return acc) (F.foldlM f acc) =<< getQueryResult
 fetchMany :: (PQ.FromRow row, EffectDB :> es) => (row -> t) -> Eff es [t]
 fetchMany f = foldrDB (\row acc -> return $ f row : acc) []
 
-newtype ConnectionSourceM = ConnectionSourceM
-  { unConnectionSourceM :: forall m. PQ.ConnectionSourceM m
-  }
-
 runEffectDB ::
   forall es a.
   (IOE :> es, Error PQ.HPQTypesError :> es) =>
-  -- (forall m. PQ.ConnectionSourceM m) ->
-  -- PQ.ConnectionSourceM (Eff es) ->
-  ConnectionSourceM ->
+  PQ.ConnectionSource [MonadBase IO, MonadMask] ->
   PQ.TransactionSettings ->
   Eff (EffectDB : es) a ->
   Eff es a
-runEffectDB (ConnectionSourceM connectionSource) transactionSettings =
+runEffectDB connectionSource transactionSettings =
   reinterpret runWithState $ \env -> \case
     RunQuery sql -> do
       dbState <- get
@@ -130,30 +145,22 @@ runEffectDB (ConnectionSourceM connectionSource) transactionSettings =
       st' {PQ.dbTransactionSettings = settings}
     WithNewConnection (action :: Eff localEs b) -> do
       dbState :: PQ.DBState (Eff es) <- get
-      let cs = undefined
-            :: PQ.ConnectionSourceM (Eff (State (PQ.DBState (Eff es)) : es))
-          cs' = PQ.dbConnectionSource dbState
-            :: PQ.ConnectionSourceM (Eff es)
-          ts = PQ.dbTransactionSettings dbState
-      runEffectDB (ConnectionSourceM connectionSource) ts
+      runEffectDB connectionSource (PQ.dbTransactionSettings dbState)
         $ localSeqUnlift env
         $ \unlift -> unlift action
-      -- By using unlifting we get from:
-      --   localEs
-      -- to
-      --              State (PQ.DBState (Eff es)) : es
-      -- but we would like to get to:
-      --   EffectDB : State (PQ.DBState (Eff es)) : es
+    GetNotification time -> do
+      dbState :: PQ.DBState (Eff es) <- get
+      liftBase $ PQ.getNotificationIO dbState time
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
-      PQ.withConnection connectionSource $ \conn -> do
+      PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
         let dbState0 = mkDBConn conn
         evalState dbState0 eff :: Eff es a
     mkDBConn conn =
       PQ.DBState
         { PQ.dbConnection = conn
-        , PQ.dbConnectionSource = connectionSource
+        , PQ.dbConnectionSource = PQ.unConnectionSource connectionSource
         , PQ.dbTransactionSettings = transactionSettings
         , PQ.dbLastQuery = PQ.SomeSQL (mempty :: PQ.SQL)
         , PQ.dbRecordLastQuery = True
