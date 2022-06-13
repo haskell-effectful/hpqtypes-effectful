@@ -19,6 +19,7 @@ module Effectful.HPQTypes
   , runEffectDB
   , getTransactionSettings
   , setTransactionSettings
+  , getConnectionStats 
   )
 where
 
@@ -59,7 +60,10 @@ setTransactionSettings :: (EffectDB :> es) => PQ.TransactionSettings -> Eff es (
 setTransactionSettings = send . SetTransactionSettings
 
 getTransactionSettings :: (EffectDB :> es) => Eff es PQ.TransactionSettings
-getTransactionSettings = send $ GetTransactionSettings
+getTransactionSettings = send GetTransactionSettings
+
+getConnectionStats :: (EffectDB :> es) => Eff es PQ.ConnectionStats
+getConnectionStats = send GetConnectionStats
 
 {-# INLINEABLE foldrDB #-}
 foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
