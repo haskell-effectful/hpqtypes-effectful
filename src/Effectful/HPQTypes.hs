@@ -37,8 +37,7 @@ data EffectDB :: Effect where
   GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
   GetConnectionStats :: EffectDB m PQ.ConnectionStats
   RunPreparedQuery :: PQ.IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
-  -- GetQueryResult :: EffectDB m Bool
-  -- GetLastQuery :: EffectDB m SomeSQL
+  GetLastQuery :: EffectDB m PQ.SomeSQL
   WithFrozenLastQuery :: m a -> EffectDB m a
 
 type instance DispatchOf EffectDB = 'Dynamic
@@ -99,6 +98,9 @@ runEffectDB connectionSource transactionSettings =
       (result, dbState') <- liftBase $ PQ.runPreparedQueryIO queryName sql (dbState :: PQ.DBState (Eff es))
       put dbState'
       pure result
+    GetLastQuery -> do
+      dbState :: PQ.DBState (Eff es) <- get
+      pure $ PQ.dbLastQuery dbState
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
