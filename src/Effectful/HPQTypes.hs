@@ -12,6 +12,9 @@ module Effectful.HPQTypes
   ( EffectDB (..)
   , runQuery
   , getQueryResult
+  , getConnectionStats
+  , runPreparedQuery
+  , getLastQuery
   , withFrozenLastQuery
   , foldrDB
   , foldlDB
@@ -52,6 +55,17 @@ runQuery = send . RunQuery
 getQueryResult :: (EffectDB :> es, PQ.FromRow row) => Eff es (Maybe (PQ.QueryResult row))
 getQueryResult = send GetQueryResult
 
+getConnectionStats :: (EffectDB :> es) => Eff es PQ.ConnectionStats
+getConnectionStats = send GetConnectionStats
+
+runPreparedQuery :: (EffectDB :> es, PQ.IsSQL sql) => PQ.QueryName -> sql -> Eff es Int
+runPreparedQuery = send ... RunPreparedQuery
+  where
+    (...) = (.) . (.)
+
+getLastQuery :: (EffectDB :> es) => Eff es PQ.SomeSQL
+getLastQuery = send GetLastQuery
+
 withFrozenLastQuery :: (EffectDB :> es) => Eff es a -> Eff es a
 withFrozenLastQuery = send . WithFrozenLastQuery
 
@@ -59,7 +73,7 @@ setTransactionSettings :: (EffectDB :> es) => PQ.TransactionSettings -> Eff es (
 setTransactionSettings = send . SetTransactionSettings
 
 getTransactionSettings :: (EffectDB :> es) => Eff es PQ.TransactionSettings
-getTransactionSettings = send $ GetTransactionSettings
+getTransactionSettings = send GetTransactionSettings
 
 {-# INLINEABLE foldrDB #-}
 foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
