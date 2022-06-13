@@ -23,7 +23,6 @@
           buildInputs = with hpkgs; [
             cabal-install
             haskell-language-server
-            fourmolu
             pkgs.postgresql_13
           ];
         };
