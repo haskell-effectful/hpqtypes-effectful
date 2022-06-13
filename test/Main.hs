@@ -5,8 +5,13 @@
 
 module Main (main) where
 
+<<<<<<< HEAD
 import Control.Exception (assert)
 import Control.Monad (void)
+||||||| f18db59
+=======
+import Control.Monad (void)
+>>>>>>> main
 import Control.Monad.Base (liftBase)
 import Data.Int (Int32)
 import qualified Data.Text as T
@@ -17,9 +22,20 @@ import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
 import Effectful.HPQTypes
 import System.Environment (getEnv)
+import Test.Tasty
+import Test.Tasty.HUnit
 
 main :: IO ()
-main = do
+main = defaultMain tests
+
+tests :: TestTree
+tests =
+  testGroup
+    "tests"
+    [testCase "test PrintConnectionStats" testPrintConnectionStats]
+
+testPrintConnectionStats :: Assertion
+testPrintConnectionStats = do
   dbUrl <- T.pack <$> getEnv "DATABASE_URL"
   let connectionSource = PQ.unConnectionSource $ PQ.simpleSource $ PQ.ConnectionSettings dbUrl Nothing []
       transactionSettings = PQ.defaultTransactionSettings

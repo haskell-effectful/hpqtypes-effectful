@@ -12,14 +12,17 @@ module Effectful.HPQTypes
   ( EffectDB (..)
   , runQuery
   , getQueryResult
+  , getConnectionStats
+  , runPreparedQuery
+  , getLastQuery
   , withFrozenLastQuery
+  , getNotification
   , foldrDB
   , foldlDB
   , fetchMany
   , runEffectDB
   , getTransactionSettings
   , setTransactionSettings
-  , getConnectionStats 
   )
 where
 
@@ -28,6 +31,7 @@ import Control.Monad.Base (liftBase)
 import qualified Data.Foldable as F
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
+import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import Effectful
@@ -44,6 +48,7 @@ data EffectDB :: Effect where
   GetTransactionSettings :: EffectDB m PQ.TransactionSettings
   SetTransactionSettings :: PQ.TransactionSettings -> EffectDB m ()
   WithFrozenLastQuery :: m a -> EffectDB m a
+  GetNotification :: Int -> EffectDB m (Maybe PQ.Notification)
 
 type instance DispatchOf EffectDB = 'Dynamic
 
@@ -53,17 +58,28 @@ runQuery = send . RunQuery
 getQueryResult :: (EffectDB :> es, PQ.FromRow row) => Eff es (Maybe (PQ.QueryResult row))
 getQueryResult = send GetQueryResult
 
-withFrozenLastQuery :: (EffectDB :> es) => Eff es a -> Eff es a
+getConnectionStats :: EffectDB :> es => Eff es PQ.ConnectionStats
+getConnectionStats = send GetConnectionStats
+
+runPreparedQuery :: (EffectDB :> es, PQ.IsSQL sql) => PQ.QueryName -> sql -> Eff es Int
+runPreparedQuery = send ... RunPreparedQuery
+  where
+    (...) = (.) . (.)
+
+getLastQuery :: EffectDB :> es => Eff es PQ.SomeSQL
+getLastQuery = send GetLastQuery
+
+withFrozenLastQuery :: EffectDB :> es => Eff es a -> Eff es a
 withFrozenLastQuery = send . WithFrozenLastQuery
 
-setTransactionSettings :: (EffectDB :> es) => PQ.TransactionSettings -> Eff es ()
+setTransactionSettings :: EffectDB :> es => PQ.TransactionSettings -> Eff es ()
 setTransactionSettings = send . SetTransactionSettings
 
-getTransactionSettings :: (EffectDB :> es) => Eff es PQ.TransactionSettings
+getTransactionSettings :: EffectDB :> es => Eff es PQ.TransactionSettings
 getTransactionSettings = send GetTransactionSettings
 
-getConnectionStats :: (EffectDB :> es) => Eff es PQ.ConnectionStats
-getConnectionStats = send GetConnectionStats
+getNotification :: EffectDB :> es => Int -> Eff es (Maybe PQ.Notification)
+getNotification = send . GetNotification
 
 {-# INLINEABLE foldrDB #-}
 foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
@@ -120,6 +136,9 @@ runEffectDB connectionSource transactionSettings =
       pure $ PQ.dbTransactionSettings dbState
     SetTransactionSettings settings -> modify $ \(st' :: PQ.DBState (Eff es)) ->
       st' {PQ.dbTransactionSettings = settings}
+    GetNotification time -> do
+      dbState :: PQ.DBState (Eff es) <- get
+      liftBase $ PQ.getNotificationIO dbState time
   where
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
