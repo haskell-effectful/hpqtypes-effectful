@@ -44,3 +44,17 @@ library
 
   hs-source-dirs:   lib
   default-language: Haskell2010
+
+test-suite hpqtypes-effectful-tests
+    type:              exitcode-stdio-1.0
+    ghc-options:       -Wall -threaded
+
+    hs-source-dirs:    test
+    main-is:           Main.hs
+    build-depends:       hpqtypes-effectuful
+                       , effectful == 0.1.*
+                       , hpqtypes == 1.9.4.0
+                       , transformers-base
+                       , base >= 4.13 && < 5
+                       , hpqtypes == 1.9.4.0
+                       , text
