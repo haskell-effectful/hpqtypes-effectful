@@ -31,6 +31,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+        ports:
+          # Maps tcp port 5432 on service container to the host
+          - 5432:5432
     steps:
       - uses: actions/checkout@v3
       - name: Setup Haskell
@@ -40,5 +43,5 @@ jobs:
           cabal-version: ${{ matrix.cabal }}
       - name: Cabal test
         env:
-          DATABASE_URL: "host=postgres user=postgres password=postgres"
+          DATABASE_URL: "host=localhost port=5432 user=postgres password=postgres"
         run: cabal test
