@@ -153,9 +153,9 @@ runEffectDB connectionSource transactionSettings =
       PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
         let dbState0 = mkDBState conn transactionSettings
         evalState dbState0 eff :: Eff es a
-    runWithNewConnection
-      :: Eff (State (PQ.DBState (Eff es)) : es) b
-      -> Eff (State (PQ.DBState (Eff es)) : es) b
+    runWithNewConnection ::
+      Eff (State (PQ.DBState (Eff es)) : es) b ->
+      Eff (State (PQ.DBState (Eff es)) : es) b
     runWithNewConnection action = do
       dbState :: PQ.DBState (Eff es) <- get
       result <- PQ.withConnection (PQ.unConnectionSource connectionSource) $ \newConn -> do

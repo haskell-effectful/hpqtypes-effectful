@@ -54,8 +54,7 @@ testPrintConnectionStats = do
         connectionStats <- getConnectionStats
         liftIO $ putStr "Connection stats: " >> print connectionStats
 
-        setTransactionSettings $ PQ.defaultTransactionSettings { PQ.tsIsolationLevel = PQ.ReadCommitted }
-        void . runQuery $ PQ.mkSQL "DROP TABLE some_table"
+        setTransactionSettings $ PQ.defaultTransactionSettings {PQ.tsIsolationLevel = PQ.ReadCommitted}
         void . runQuery $ PQ.mkSQL "CREATE TABLE some_table (field INT)"
         void . runQuery $ PQ.mkSQL "BEGIN"
         void . runQuery $ PQ.mkSQL "INSERT INTO some_table VALUES (1)"
@@ -63,10 +62,11 @@ testPrintConnectionStats = do
           newConnectionStats <- getConnectionStats
           liftIO $ putStr "New connection stats: " >> print newConnectionStats
 
-          setTransactionSettings $ PQ.defaultTransactionSettings { PQ.tsIsolationLevel = PQ.ReadCommitted }
+          setTransactionSettings $ PQ.defaultTransactionSettings {PQ.tsIsolationLevel = PQ.ReadCommitted}
           noOfResults <- runQuery $ PQ.mkSQL "SELECT * FROM some_table"
           liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
         void . runQuery $ PQ.mkSQL "COMMIT"
         noOfResults <- runQuery $ PQ.mkSQL "SELECT * FROM some_table"
         liftIO $ assertEqual "Results should be visible" 1 noOfResults
+        void . runQuery $ PQ.mkSQL "DROP TABLE some_table"
   (runEff . runErrorNoCallStack @PQ.HPQTypesError $ runEffectDB connectionSource transactionSettings program) >>= print
