@@ -143,11 +143,7 @@ runEffectDB connectionSource transactionSettings =
     SetTransactionSettings settings -> modify $ \(st' :: PQ.DBState (Eff es)) ->
       st' {PQ.dbTransactionSettings = settings}
     WithNewConnection (action :: Eff localEs b) -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      -- TODO: Try using @PQ.dbConnectionSource dbState@ as in the original code
-      runEffectDB connectionSource (PQ.dbTransactionSettings dbState) $
-        localSeqUnlift env $
-          \unlift -> unlift action
+      runWithNewConnection $ localSeqUnlift env (\unlift -> unlift action)
     GetNotification time -> do
       dbState :: PQ.DBState (Eff es) <- get
       liftBase $ PQ.getNotificationIO dbState time
@@ -155,13 +151,26 @@ runEffectDB connectionSource transactionSettings =
     runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
     runWithState eff =
       PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
-        let dbState0 = mkDBConn conn
+        let dbState0 = mkDBState conn transactionSettings
         evalState dbState0 eff :: Eff es a
-    mkDBConn conn =
+    runWithNewConnection
+      :: Eff (State (PQ.DBState (Eff es)) : es) b
+      -> Eff (State (PQ.DBState (Eff es)) : es) b
+    runWithNewConnection action = do
+      dbState :: PQ.DBState (Eff es) <- get
+      result <- PQ.withConnection (PQ.unConnectionSource connectionSource) $ \newConn -> do
+        -- TODO: We do not pass the current connection source to the new DB
+        -- state, which differs from the original code.
+        put $ mkDBState newConn (PQ.dbTransactionSettings dbState)
+        action
+      put dbState
+      pure result
+    mkDBState :: PQ.Connection -> PQ.TransactionSettings -> PQ.DBState (Eff es)
+    mkDBState conn ts =
       PQ.DBState
         { PQ.dbConnection = conn
         , PQ.dbConnectionSource = PQ.unConnectionSource connectionSource
-        , PQ.dbTransactionSettings = transactionSettings
+        , PQ.dbTransactionSettings = ts
         , PQ.dbLastQuery = PQ.SomeSQL (mempty :: PQ.SQL)
         , PQ.dbRecordLastQuery = True
         , PQ.dbQueryResult = Nothing
