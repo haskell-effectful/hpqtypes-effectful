@@ -54,6 +54,7 @@ test-suite hpqtypes-effectful-tests
     , base                >=4.13    && <5
     , effectful           ^>=0.1
     , effectful-hpqtypes
+    , exceptions
     , hpqtypes            ==1.9.4.0
     , tasty
     , tasty-hunit
