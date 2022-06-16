@@ -16,7 +16,7 @@ module Effectful.HPQTypes
   )
 where
 
-import Control.Concurrent.MVar
+import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Catch (MonadMask)
 import qualified Database.PostgreSQL.PQTypes as PQ
