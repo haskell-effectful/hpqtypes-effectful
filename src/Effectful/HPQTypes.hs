@@ -75,7 +75,7 @@ runEffectDB connectionSource transactionSettings =
       dbState :: PQ.DBState (Eff es) <- get
       pure $ PQ.dbQueryResult dbState
     ClearQueryResult ->
-      modify $ \(st :: PQ.DBState (Eff es)) -> st { PQ.dbQueryResult = Nothing }
+      modify $ \(st :: PQ.DBState (Eff es)) -> st {PQ.dbQueryResult = Nothing}
     WithFrozenLastQuery (action :: Eff localEs b) -> do
       st :: PQ.DBState (Eff es) <- get
       put st {PQ.dbRecordLastQuery = False}
