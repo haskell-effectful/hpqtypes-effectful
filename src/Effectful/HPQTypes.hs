@@ -7,30 +7,18 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Effectful.HPQTypes
   ( EffectDB (..)
-  , runQuery
-  , getQueryResult
-  , getConnectionStats
-  , runPreparedQuery
-  , getLastQuery
-  , withFrozenLastQuery
-  , getNotification
-  , foldrDB
-  , foldlDB
-  , fetchMany
   , runEffectDB
-  , getTransactionSettings
-  , setTransactionSettings
-  , withNewConnection
   )
 where
 
 import Control.Concurrent.MVar
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Catch (MonadMask)
-import qualified Data.Foldable as F
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
@@ -44,6 +32,7 @@ import Effectful.State.Static.Local
 data EffectDB :: Effect where
   RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
   GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
+  ClearQueryResult :: EffectDB m ()
   GetConnectionStats :: EffectDB m PQ.ConnectionStats
   RunPreparedQuery :: PQ.IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
   GetLastQuery :: EffectDB m PQ.SomeSQL
@@ -55,49 +44,18 @@ data EffectDB :: Effect where
 
 type instance DispatchOf EffectDB = 'Dynamic
 
-runQuery :: (EffectDB :> es, PQ.IsSQL sql) => sql -> Eff es Int
-runQuery = send . RunQuery
-
-getQueryResult :: (EffectDB :> es, PQ.FromRow row) => Eff es (Maybe (PQ.QueryResult row))
-getQueryResult = send GetQueryResult
-
-getConnectionStats :: EffectDB :> es => Eff es PQ.ConnectionStats
-getConnectionStats = send GetConnectionStats
-
-runPreparedQuery :: (EffectDB :> es, PQ.IsSQL sql) => PQ.QueryName -> sql -> Eff es Int
-runPreparedQuery = send ... RunPreparedQuery
-  where
-    (...) = (.) . (.)
-
-getLastQuery :: EffectDB :> es => Eff es PQ.SomeSQL
-getLastQuery = send GetLastQuery
-
-withFrozenLastQuery :: EffectDB :> es => Eff es a -> Eff es a
-withFrozenLastQuery = send . WithFrozenLastQuery
-
-setTransactionSettings :: EffectDB :> es => PQ.TransactionSettings -> Eff es ()
-setTransactionSettings = send . SetTransactionSettings
-
-getTransactionSettings :: EffectDB :> es => Eff es PQ.TransactionSettings
-getTransactionSettings = send GetTransactionSettings
-
-getNotification :: EffectDB :> es => Int -> Eff es (Maybe PQ.Notification)
-getNotification = send . GetNotification
-
-withNewConnection :: (EffectDB :> es) => Eff es a -> Eff es a
-withNewConnection = send . WithNewConnection
-
-{-# INLINEABLE foldrDB #-}
-foldrDB :: (PQ.FromRow row, EffectDB :> es) => (row -> acc -> Eff es acc) -> acc -> Eff es acc
-foldrDB f acc = maybe (return acc) (F.foldrM f acc) =<< getQueryResult
-
-{-# INLINEABLE foldlDB #-}
-foldlDB :: (PQ.FromRow row, EffectDB :> es) => (acc -> row -> Eff es acc) -> acc -> Eff es acc
-foldlDB f acc = maybe (return acc) (F.foldlM f acc) =<< getQueryResult
-
-{-# INLINEABLE fetchMany #-}
-fetchMany :: (PQ.FromRow row, EffectDB :> es) => (row -> t) -> Eff es [t]
-fetchMany f = foldrDB (\row acc -> return $ f row : acc) []
+instance EffectDB :> es => PQ.MonadDB (Eff es) where
+  runQuery = send . RunQuery
+  getQueryResult = send GetQueryResult
+  clearQueryResult = send ClearQueryResult
+  getConnectionStats = send GetConnectionStats
+  runPreparedQuery qn = send . RunPreparedQuery qn
+  getLastQuery = send GetLastQuery
+  getTransactionSettings = send GetTransactionSettings
+  setTransactionSettings = send . SetTransactionSettings
+  withFrozenLastQuery = send . WithFrozenLastQuery
+  withNewConnection = send . WithNewConnection
+  getNotification = send . GetNotification
 
 runEffectDB ::
   forall es a.
@@ -116,6 +74,8 @@ runEffectDB connectionSource transactionSettings =
     GetQueryResult -> do
       dbState :: PQ.DBState (Eff es) <- get
       pure $ PQ.dbQueryResult dbState
+    ClearQueryResult ->
+      modify $ \(st :: PQ.DBState (Eff es)) -> st { PQ.dbQueryResult = Nothing }
     WithFrozenLastQuery (action :: Eff localEs b) -> do
       st :: PQ.DBState (Eff es) <- get
       put st {PQ.dbRecordLastQuery = False}
