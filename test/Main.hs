@@ -10,8 +10,7 @@ import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Catch (MonadMask)
 import Data.Int (Int32)
 import qualified Data.Text as T
-import qualified Database.PostgreSQL.PQTypes as PQ
-import Database.PostgreSQL.PQTypes.SQL.Class
+import Database.PostgreSQL.PQTypes hiding (queryResult)
 import Effectful
 import Effectful.Error.Static
 import Effectful.HPQTypes
@@ -31,42 +30,42 @@ tests =
 testPrintConnectionStats :: Assertion
 testPrintConnectionStats = do
   dbUrl <- T.pack <$> getEnv "DATABASE_URL"
-  let connectionSource :: PQ.ConnectionSource [MonadBase IO, MonadMask]
-      connectionSource = PQ.simpleSource $ PQ.ConnectionSettings dbUrl Nothing []
-      transactionSettings = PQ.defaultTransactionSettings
+  let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
+      connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+      transactionSettings = defaultTransactionSettings
       sql = "SELECT 1"
-      program :: Eff '[EffectDB, Error PQ.HPQTypesError, IOE] ()
+      program :: Eff '[EffectDB, Error HPQTypesError, IOE] ()
       program = do
-        rowNo <- runQuery $ PQ.mkSQL sql
+        rowNo <- runQuery $ mkSQL sql
         liftBase $ putStr "Row number: " >> print rowNo
 
-        queryResult :: [Int32] <- fetchMany PQ.runIdentity
+        queryResult :: [Int32] <- fetchMany runIdentity
         liftBase $ putStr "Result(s): " >> print queryResult
 
         (SomeSQL lq) <- getLastQuery
         withFrozenLastQuery $ do
           let newSQL = "SELECT 2"
-          void . runQuery $ PQ.mkSQL newSQL
+          void . runQuery $ mkSQL newSQL
           (SomeSQL newLq) <- getLastQuery
-          liftIO $ assertEqual "SQL don't match" (show newLq) (show $ PQ.mkSQL sql)
-        liftIO $ assertEqual "SQL don't match" (show lq) (show $ PQ.mkSQL sql)
+          liftIO $ assertEqual "SQL don't match" (show newLq) (show $ mkSQL sql)
+        liftIO $ assertEqual "SQL don't match" (show lq) (show $ mkSQL sql)
 
         connectionStats <- getConnectionStats
         liftIO $ putStr "Connection stats: " >> print connectionStats
 
-        setTransactionSettings $ PQ.defaultTransactionSettings {PQ.tsIsolationLevel = PQ.ReadCommitted}
-        void . runQuery $ PQ.mkSQL "CREATE TABLE some_table (field INT)"
-        void . runQuery $ PQ.mkSQL "BEGIN"
-        void . runQuery $ PQ.mkSQL "INSERT INTO some_table VALUES (1)"
+        setTransactionSettings $ defaultTransactionSettings {tsIsolationLevel = ReadCommitted}
+        void . runQuery $ mkSQL "CREATE TABLE some_table (field INT)"
+        void . runQuery $ mkSQL "BEGIN"
+        void . runQuery $ mkSQL "INSERT INTO some_table VALUES (1)"
         withNewConnection $ do
           newConnectionStats <- getConnectionStats
           liftIO $ putStr "New connection stats: " >> print newConnectionStats
 
-          setTransactionSettings $ PQ.defaultTransactionSettings {PQ.tsIsolationLevel = PQ.ReadCommitted}
-          noOfResults <- runQuery $ PQ.mkSQL "SELECT * FROM some_table"
+          setTransactionSettings $ defaultTransactionSettings {tsIsolationLevel = ReadCommitted}
+          noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
           liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
-        void . runQuery $ PQ.mkSQL "COMMIT"
-        noOfResults <- runQuery $ PQ.mkSQL "SELECT * FROM some_table"
+        void . runQuery $ mkSQL "COMMIT"
+        noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
         liftIO $ assertEqual "Results should be visible" 1 noOfResults
-        void . runQuery $ PQ.mkSQL "DROP TABLE some_table"
-  (runEff . runErrorNoCallStack @PQ.HPQTypesError $ runEffectDB connectionSource transactionSettings program) >>= print
+        void . runQuery $ mkSQL "DROP TABLE some_table"
+  (runEff . runErrorNoCallStack @HPQTypesError $ runEffectDB connectionSource transactionSettings program) >>= print
