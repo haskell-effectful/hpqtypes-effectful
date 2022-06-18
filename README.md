@@ -8,7 +8,7 @@
 
 This library exposes the `EffectDB` type-level effect that you can declare in your type signatures.
 
-An `Eff es` stack that contains `EffectDB` in its stack can use all functions
+An `Eff es` stack that contains `EffectDB` can use all functions
 that have a `MonadDB` constraint.
 
 example:
