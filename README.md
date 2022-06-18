@@ -19,5 +19,5 @@ exampleProgram = do
   runQuery_ $ mkSQL "INSERT INTO some_table VALUES (1)"
   noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
   liftIO $ assertEqual "Should get one result" 1 noOfResults
-  void . runQuery $ mkSQL "DROP TABLE some_table"
+  runQuery_ $ mkSQL "DROP TABLE some_table"
 ```
