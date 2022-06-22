@@ -6,9 +6,9 @@
 
 ## How to use
 
-This library provides an EffectDB effect that allows use of the hpqtypes bindings for libpqtypes in the effectful ecosystem."
+This library provides an EffectDB effect that allows the use of the hpqtypes bindings for libpqtypes in the effectful ecosystem.
 
-An `Eff es` stack that contains `EffectDB` allows use of all functions
+An `Eff es` stack that contains `EffectDB` allows the use of all functions
 with a `MonadDB` constraint.
 
 example:
