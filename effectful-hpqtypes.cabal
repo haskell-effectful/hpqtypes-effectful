@@ -13,7 +13,7 @@ bug-reports:
 
 license:            BSD-3-Clause
 license-file:       LICENSE
-author:             Jakub Waszczuk
+author:             Scrive AB
 maintainer:         haskell-effectful maintainers
 
 -- A copyright notice.

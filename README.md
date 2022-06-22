@@ -6,14 +6,14 @@
 
 ## How to use
 
-This library exposes the `EffectDB` type-level effect that you can declare in your type signatures.
+This library provides an EffectDB effect that allows use of the hpqtypes bindings for libpqtypes in the effectful ecosystem."
 
-An `Eff es` stack that contains `EffectDB` can use all functions
-that have a `MonadDB` constraint.
+An `Eff es` stack that contains `EffectDB` allows use of all functions
+with a `MonadDB` constraint.
 
 example:
 ```haskell
-exampleProgram :: Eff '[EffectDB, Error HPQTypesError, IOE] ()
+exampleProgram :: Eff '[EffectDB, IOE] ()
 exampleProgram = do
   runQuery_ $ mkSQL "CREATE TABLE some_table (field INT)"
   runQuery_ $ mkSQL "INSERT INTO some_table VALUES (1)"
