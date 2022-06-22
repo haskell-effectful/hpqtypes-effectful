@@ -29,6 +29,10 @@ import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
 import Effectful.State.Static.Local
 
+-- | An effect that allows the use of the hpqtypes bindings for libpqtypes in the effectful ecosystem.
+--
+-- An `Eff es` stack that contains `EffectDB` allows the use of all functions
+-- with a `MonadDB` constraint.
 data EffectDB :: Effect where
   RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
   GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
@@ -57,6 +61,7 @@ instance EffectDB :> es => PQ.MonadDB (Eff es) where
   withNewConnection = send . WithNewConnection
   getNotification = send . GetNotification
 
+-- | The default effect runner.
 runEffectDB ::
   forall es a.
   (IOE :> es, Error PQ.HPQTypesError :> es) =>

@@ -5,14 +5,16 @@ synopsis:           Effectful bindings for hpqtypes
 
 -- A longer description of the package.
 -- description:
-homepage:
+homepage:           https://github.com/haskell-effectful/hpqtypes-effectful
 
 -- A URL where users can report bugs.
--- bug-reports:
+bug-reports:
+  https://github.com/haskell-effectful/hpqtypes-effectful/issues
+
 license:            BSD-3-Clause
 license-file:       LICENSE
-author:             Kyriakos Papachrysanthou
-maintainer:         kyriakos.papachrysanthou@scrive.com
+author:             Scrive AB
+maintainer:         haskell-effectful maintainers
 
 -- A copyright notice.
 -- copyright:
