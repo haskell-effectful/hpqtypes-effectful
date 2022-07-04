@@ -41,6 +41,7 @@ library
     , effectful          ^>=0.1
     , exceptions
     , hpqtypes           ==1.9.4.0
+    , lifted-base
     , text
     , transformers-base
 
