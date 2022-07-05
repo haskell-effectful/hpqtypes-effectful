@@ -34,7 +34,7 @@ testPrintConnectionStats = do
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
       transactionSettings = defaultTransactionSettings
       sql = "SELECT 1"
-      program :: Eff '[EffectDB, Error HPQTypesError, IOE] ()
+      program :: Eff '[DB, Error HPQTypesError, IOE] ()
       program = do
         rowNo <- runQuery $ mkSQL sql
         liftBase $ putStr "Row number: " >> print rowNo

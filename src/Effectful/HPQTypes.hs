@@ -11,7 +11,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Effectful.HPQTypes
-  ( EffectDB (..)
+  ( DB (..)
   , runEffectDB
   )
 where
@@ -31,24 +31,24 @@ import Effectful.State.Static.Local
 
 -- | An effect that allows the use of the hpqtypes bindings for libpqtypes in the effectful ecosystem.
 --
--- An `Eff es` stack that contains `EffectDB` allows the use of all functions
+-- An `Eff es` stack that contains `DB` allows the use of all functions
 -- with a `MonadDB` constraint.
-data EffectDB :: Effect where
-  RunQuery :: PQ.IsSQL sql => sql -> EffectDB m Int
-  GetQueryResult :: PQ.FromRow row => EffectDB m (Maybe (PQ.QueryResult row))
-  ClearQueryResult :: EffectDB m ()
-  GetConnectionStats :: EffectDB m PQ.ConnectionStats
-  RunPreparedQuery :: PQ.IsSQL sql => PQ.QueryName -> sql -> EffectDB m Int
-  GetLastQuery :: EffectDB m PQ.SomeSQL
-  GetTransactionSettings :: EffectDB m PQ.TransactionSettings
-  SetTransactionSettings :: PQ.TransactionSettings -> EffectDB m ()
-  WithFrozenLastQuery :: m a -> EffectDB m a
-  WithNewConnection :: m a -> EffectDB m a
-  GetNotification :: Int -> EffectDB m (Maybe PQ.Notification)
+data DB :: Effect where
+  RunQuery :: PQ.IsSQL sql => sql -> DB m Int
+  GetQueryResult :: PQ.FromRow row => DB m (Maybe (PQ.QueryResult row))
+  ClearQueryResult :: DB m ()
+  GetConnectionStats :: DB m PQ.ConnectionStats
+  RunPreparedQuery :: PQ.IsSQL sql => PQ.QueryName -> sql -> DB m Int
+  GetLastQuery :: DB m PQ.SomeSQL
+  GetTransactionSettings :: DB m PQ.TransactionSettings
+  SetTransactionSettings :: PQ.TransactionSettings -> DB m ()
+  WithFrozenLastQuery :: m a -> DB m a
+  WithNewConnection :: m a -> DB m a
+  GetNotification :: Int -> DB m (Maybe PQ.Notification)
 
-type instance DispatchOf EffectDB = 'Dynamic
+type instance DispatchOf DB = 'Dynamic
 
-instance EffectDB :> es => PQ.MonadDB (Eff es) where
+instance DB :> es => PQ.MonadDB (Eff es) where
   runQuery = send . RunQuery
   getQueryResult = send GetQueryResult
   clearQueryResult = send ClearQueryResult
@@ -67,7 +67,7 @@ runEffectDB ::
   (IOE :> es, Error PQ.HPQTypesError :> es) =>
   PQ.ConnectionSource [MonadBase IO, MonadMask] ->
   PQ.TransactionSettings ->
-  Eff (EffectDB : es) a ->
+  Eff (DB : es) a ->
   Eff es a
 runEffectDB connectionSource transactionSettings =
   reinterpret runWithState $ \env -> \case
