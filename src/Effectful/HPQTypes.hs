@@ -167,7 +167,8 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) wher
     (result, dbState') <- liftBase $ PQ.runQueryIO sql dbState
     put dbState'
     pure result
-  getQueryResult = PQ.dbQueryResult <$> get
+  getQueryResult =
+    get >>= \dbState -> pure $ PQ.dbQueryResult dbState
   clearQueryResult =
     modify $ \st -> st {PQ.dbQueryResult = Nothing}
   getConnectionStats = do
