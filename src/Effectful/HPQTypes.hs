@@ -101,11 +101,7 @@ runEffectDB connectionSource transactionSettings =
     runWithState eff =
       PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
         let dbState0 = mkDBState (PQ.unConnectionSource connectionSource) conn transactionSettings
-            eff' =
-              if PQ.tsAutoTransaction transactionSettings
-                then withTransaction' (transactionSettings {PQ.tsAutoTransaction = False}) eff
-                else eff
-        evalState dbState0 eff' :: Eff es a
+        evalState dbState0 $ handleAutoTransaction transactionSettings withTransaction' eff
     withTransaction' ::
       PQ.TransactionSettings ->
       Eff (DBState es : es) a ->
@@ -126,6 +122,18 @@ mkDBState connectionSource conn ts =
     , PQ.dbRecordLastQuery = True
     , PQ.dbQueryResult = Nothing
     }
+
+handleAutoTransaction ::
+  PQ.TransactionSettings ->
+  (PQ.TransactionSettings -> m a -> m a) ->
+  m a ->
+  m a
+handleAutoTransaction transactionSettings withTransaction action =
+  -- TODO NOW: Why don't we have to set `tsAutoTransaction` to `False` in the
+  -- context of the `action`?
+  if PQ.tsAutoTransaction transactionSettings
+    then withTransaction (transactionSettings {PQ.tsAutoTransaction = False}) action
+    else action
 
 ---------------------------------------------------
 -- Internal effect stack
@@ -187,8 +195,9 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) wher
   withNewConnection action = do
     dbState <- get
     result <- PQ.withConnection (PQ.dbConnectionSource dbState) $ \newConn -> do
-      put $ mkDBState (PQ.dbConnectionSource dbState) newConn (PQ.dbTransactionSettings dbState)
-      action
+      let transactionSettings = PQ.dbTransactionSettings dbState
+      put $ mkDBState (PQ.dbConnectionSource dbState) newConn transactionSettings
+      handleAutoTransaction transactionSettings PQ.withTransaction' action
     put dbState
     pure result
   getNotification time = do
