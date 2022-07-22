@@ -54,6 +54,8 @@ data DB :: Effect where
 
 type instance DispatchOf DB = 'Dynamic
 
+-- This instance is not necessary to make the adapter work, but it can be useful
+-- for library users.
 instance DB :> es => PQ.MonadDB (Eff es) where
   runQuery = send . RunQuery
   getQueryResult = send GetQueryResult
@@ -77,23 +79,23 @@ runEffectDB ::
   Eff es a
 runEffectDB connectionSource transactionSettings =
   reinterpret runWithState $ \env -> \case
-    RunQuery sql -> unWithDBState $ PQ.runQuery sql
-    GetQueryResult -> unWithDBState PQ.getQueryResult
-    ClearQueryResult -> unWithDBState PQ.clearQueryResult
-    GetConnectionStats -> unWithDBState PQ.getConnectionStats
-    RunPreparedQuery queryName sql -> unWithDBState $ PQ.runPreparedQuery queryName sql
-    GetLastQuery -> unWithDBState PQ.getLastQuery
-    GetTransactionSettings -> unWithDBState PQ.getTransactionSettings
-    SetTransactionSettings settings -> unWithDBState $ PQ.setTransactionSettings settings
+    RunQuery sql -> unDBEff $ PQ.runQuery sql
+    GetQueryResult -> unDBEff PQ.getQueryResult
+    ClearQueryResult -> unDBEff PQ.clearQueryResult
+    GetConnectionStats -> unDBEff PQ.getConnectionStats
+    RunPreparedQuery queryName sql -> unDBEff $ PQ.runPreparedQuery queryName sql
+    GetLastQuery -> unDBEff PQ.getLastQuery
+    GetTransactionSettings -> unDBEff PQ.getTransactionSettings
+    SetTransactionSettings settings -> unDBEff $ PQ.setTransactionSettings settings
     WithFrozenLastQuery (action :: Eff localEs b) ->
-      unWithDBState . PQ.withFrozenLastQuery . WithDBState $
+      unDBEff . PQ.withFrozenLastQuery . DBEff $
         localSeqUnlift env $ \unlift -> unlift action
     WithNewConnection (action :: Eff localEs b) ->
-      unWithDBState . PQ.withNewConnection . WithDBState $
+      unDBEff . PQ.withNewConnection . DBEff $
         localSeqUnlift env $ \unlift -> unlift action
-    GetNotification time -> unWithDBState $ PQ.getNotification time
+    GetNotification time -> unDBEff $ PQ.getNotification time
   where
-    runWithState :: Eff (DBInternal es) a -> Eff es a
+    runWithState :: Eff (DBState es : es) a -> Eff es a
     runWithState eff =
       PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
         let dbState0 = mkDBState (PQ.unConnectionSource connectionSource) conn transactionSettings
@@ -103,9 +105,9 @@ runEffectDB connectionSource transactionSettings =
         evalState dbState0 eff' :: Eff es a
     withTransaction'
       :: PQ.TransactionSettings
-      -> Eff (DBInternal es) a
-      -> Eff (DBInternal es) a
-    withTransaction' ts eff = unWithDBState . PQ.withTransaction' ts $ WithDBState eff
+      -> Eff (DBState es : es) a
+      -> Eff (DBState es : es) a
+    withTransaction' ts eff = unDBEff . PQ.withTransaction' ts $ DBEff eff
 
 mkDBState
   :: PQ.ConnectionSourceM m
@@ -126,27 +128,29 @@ mkDBState connectionSource conn ts =
 -- Internal effect stack
 ---------------------------------------------------
 
--- | Internal effect stack used to reinterpret the `DB` effect
-type DBInternal es = State (PQ.DBState (WithDBState es)) : es
-
--- | Newtype wrapper over the internal effect stack
-newtype WithDBState es a = WithDBState
-  { unWithDBState :: Eff (DBInternal es) a
+-- | Newtype wrapper over the internal DB effect stack
+newtype DBEff es a = DBEff
+  { unDBEff :: Eff (DBState es : es) a
   }
   deriving newtype (Functor, Applicative, Monad, MonadThrow, MonadCatch, MonadMask)
 
-instance (IOE :> es) => MonadBase IO (WithDBState es) where
-  liftBase b = WithDBState $ liftBase b
+-- | Internal state effect used to reinterpret the `DB` effect
+type DBState es = State (PQ.DBState (DBEff es))
 
--- Convenience instance to avoid writing @WithDBState get@ etc.
+-- Convenience @MonadBase IO@ instance
+instance (IOE :> es) => MonadBase IO (DBEff es) where
+  liftBase b = DBEff $ liftBase b
+
+-- Convenience instance to avoid writing @DBEff get@ etc.
 -- REVIEW: This comes with the mtl dependency, so maybe it isn't worth it?  The
--- `get`, `put`, and `modify` gelper functions could be also defined directly.
-instance MonadState (PQ.DBState (WithDBState es)) (WithDBState es) where
-  get = WithDBState State.get
-  put = WithDBState . State.put
-  state = WithDBState . State.state
+-- `get`, `put`, and `modify` gelper functions could be also defined
+-- explicitely.
+instance MonadState (PQ.DBState (DBEff es)) (DBEff es) where
+  get = DBEff State.get
+  put = DBEff . State.put
+  state = DBEff . State.state
 
-instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (WithDBState es) where
+instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) where
   runQuery sql = do
     dbState <- get
     (result, dbState') <- liftBase $ PQ.runQueryIO sql dbState
@@ -159,7 +163,7 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (WithDBState es
     dbState <- get
     mconn <- liftBase . readMVar . PQ.unConnection $ PQ.dbConnection dbState
     case mconn of
-      Nothing -> WithDBState . throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
+      Nothing -> DBEff . throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
       Just cd -> pure $ PQ.cdStats cd
   runPreparedQuery queryName sql = do
     dbState <- get
