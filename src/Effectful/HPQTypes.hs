@@ -96,9 +96,6 @@ runEffectDB connectionSource transactionSettings =
     runWithState eff =
       PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
         let dbState0 = mkDBState (PQ.unConnectionSource connectionSource) conn transactionSettings
-            -- TODO NOW: Is it ok that we now look at transactionSettings?
-            -- Probably yes, since at this point we have no access to any other
-            -- settings.  However, make sure about that.
             eff' = if PQ.tsAutoTransaction transactionSettings
               then withTransaction' (transactionSettings { PQ.tsAutoTransaction = False }) eff
               else eff
@@ -160,11 +157,7 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (WithDBState es
     pure result
   withNewConnection action = do
     dbState <- ST.get
-    -- TODO NOW: We now take connection source from the DB state, which differs
-    -- from the previous implementation; is that better or worse?
     result <- PQ.withConnection (PQ.dbConnectionSource dbState) $ \newConn -> do
-      -- TODO NOW: We do not pass the current connection source to the new DB
-      -- state, which differs from the original code.
       ST.put $ mkDBState (PQ.dbConnectionSource dbState) newConn (PQ.dbTransactionSettings dbState)
       action
     ST.put dbState
