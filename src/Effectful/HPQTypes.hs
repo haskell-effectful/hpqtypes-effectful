@@ -1,17 +1,17 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Effectful.HPQTypes
@@ -22,8 +22,8 @@ where
 
 import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Base (MonadBase, liftBase)
-import Control.Monad.Catch (MonadThrow, MonadCatch, MonadMask)
-import Control.Monad.State.Class (MonadState, get, put, state, modify)
+import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow)
+import Control.Monad.State.Class (MonadState, get, modify, put, state)
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
@@ -32,7 +32,7 @@ import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import Effectful
 import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
-import Effectful.State.Static.Local (evalState, State)
+import Effectful.State.Static.Local (State, evalState)
 import qualified Effectful.State.Static.Local as State
 
 -- | An effect that allows the use of the hpqtypes bindings for libpqtypes in the effectful ecosystem.
@@ -89,31 +89,34 @@ runEffectDB connectionSource transactionSettings =
     SetTransactionSettings settings -> unDBEff $ PQ.setTransactionSettings settings
     WithFrozenLastQuery (action :: Eff localEs b) ->
       unDBEff . PQ.withFrozenLastQuery . DBEff $
-        localSeqUnlift env $ \unlift -> unlift action
+        localSeqUnlift env $
+          \unlift -> unlift action
     WithNewConnection (action :: Eff localEs b) ->
       unDBEff . PQ.withNewConnection . DBEff $
-        localSeqUnlift env $ \unlift -> unlift action
+        localSeqUnlift env $
+          \unlift -> unlift action
     GetNotification time -> unDBEff $ PQ.getNotification time
   where
     runWithState :: Eff (DBState es : es) a -> Eff es a
     runWithState eff =
       PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
         let dbState0 = mkDBState (PQ.unConnectionSource connectionSource) conn transactionSettings
-            eff' = if PQ.tsAutoTransaction transactionSettings
-              then withTransaction' (transactionSettings { PQ.tsAutoTransaction = False }) eff
-              else eff
+            eff' =
+              if PQ.tsAutoTransaction transactionSettings
+                then withTransaction' (transactionSettings {PQ.tsAutoTransaction = False}) eff
+                else eff
         evalState dbState0 eff' :: Eff es a
-    withTransaction'
-      :: PQ.TransactionSettings
-      -> Eff (DBState es : es) a
-      -> Eff (DBState es : es) a
+    withTransaction' ::
+      PQ.TransactionSettings ->
+      Eff (DBState es : es) a ->
+      Eff (DBState es : es) a
     withTransaction' ts eff = unDBEff . PQ.withTransaction' ts $ DBEff eff
 
-mkDBState
-  :: PQ.ConnectionSourceM m
-  -> PQ.Connection
-  -> PQ.TransactionSettings
-  -> PQ.DBState m
+mkDBState ::
+  PQ.ConnectionSourceM m ->
+  PQ.Connection ->
+  PQ.TransactionSettings ->
+  PQ.DBState m
 mkDBState connectionSource conn ts =
   PQ.DBState
     { PQ.dbConnection = conn
