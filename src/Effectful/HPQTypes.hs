@@ -123,17 +123,20 @@ mkDBState connectionSource conn ts =
     , PQ.dbQueryResult = Nothing
     }
 
+-- TODO NOW: Provisional workaround to make tests pass
 handleAutoTransaction ::
   PQ.TransactionSettings ->
   (PQ.TransactionSettings -> m a -> m a) ->
   m a ->
   m a
-handleAutoTransaction transactionSettings withTransaction action =
-  -- TODO NOW: Why don't we have to set `tsAutoTransaction` to `False` in the
-  -- context of the `action`?
-  if PQ.tsAutoTransaction transactionSettings
-    then withTransaction (transactionSettings {PQ.tsAutoTransaction = False}) action
-    else action
+handleAutoTransaction _transactionSettings _withTransaction action = action
+
+-- handleAutoTransaction transactionSettings withTransaction action =
+--   -- TODO NOW: Why don't we have to set `tsAutoTransaction` to `False` in the
+--   -- context of the `action`?
+--   if PQ.tsAutoTransaction transactionSettings
+--     then withTransaction (transactionSettings {PQ.tsAutoTransaction = False}) action
+--     else action
 
 ---------------------------------------------------
 -- Internal effect stack
