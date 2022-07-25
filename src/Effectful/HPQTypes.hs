@@ -154,7 +154,7 @@ instance (IOE :> es) => MonadBase IO (DBEff es) where
 
 -- Convenience instance to avoid writing @DBEff get@ etc.
 -- REVIEW: This comes with the mtl dependency, so maybe it isn't worth it?  The
--- `get`, `put`, and `modify` gelper functions could be also defined
+-- `get`, `put`, and `modify` helper functions could be also defined
 -- explicitely.
 instance MonadState (PQ.DBState (DBEff es)) (DBEff es) where
   get = DBEff State.get
