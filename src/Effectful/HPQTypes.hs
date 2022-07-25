@@ -17,9 +17,8 @@ module Effectful.HPQTypes
 where
 
 import Control.Concurrent.MVar (readMVar)
-import Control.Exception.Lifted (bracket)
 import Control.Monad.Base (MonadBase, liftBase)
-import Control.Monad.Catch (MonadMask)
+import Control.Monad.Catch (MonadMask, bracket)
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
