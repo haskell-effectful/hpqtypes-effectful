@@ -18,7 +18,7 @@ where
 
 import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Base (MonadBase, liftBase)
-import Control.Monad.Catch (MonadMask)
+import Control.Monad.Catch (MonadMask, bracket)
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
@@ -121,15 +121,16 @@ runEffectDB connectionSource transactionSettings =
     runWithNewConnection ::
       Eff (State (PQ.DBState (Eff es)) : es) b ->
       Eff (State (PQ.DBState (Eff es)) : es) b
-    runWithNewConnection action = do
-      dbState :: PQ.DBState (Eff es) <- get
-      result <- PQ.withConnection (PQ.unConnectionSource connectionSource) $ \newConn -> do
-        -- TODO: We do not pass the current connection source to the new DB
-        -- state, which differs from the original code.
-        put $ mkDBState newConn (PQ.dbTransactionSettings dbState)
-        action
-      put dbState
-      pure result
+    runWithNewConnection action =
+      bracket get put $ \(dbState :: PQ.DBState (Eff es)) ->
+        PQ.withConnection
+          (PQ.unConnectionSource connectionSource)
+          $ \newConn -> do
+            -- TODO: We do not pass the current connection source to the new DB
+            -- state, which differs from the original code.
+            put $ mkDBState newConn (PQ.dbTransactionSettings dbState)
+            action
+
     mkDBState :: PQ.Connection -> PQ.TransactionSettings -> PQ.DBState (Eff es)
     mkDBState conn ts =
       PQ.DBState
