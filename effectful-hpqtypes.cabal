@@ -43,7 +43,6 @@ library
     , hpqtypes           ==1.9.4.0
     , text
     , transformers-base
-    , mtl
 
   hs-source-dirs:   src
   default-language: Haskell2010

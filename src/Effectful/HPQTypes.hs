@@ -23,7 +23,6 @@ where
 import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow, bracket)
-import Control.Monad.State.Class (MonadState, get, modify, put, state)
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
@@ -54,8 +53,6 @@ data DB :: Effect where
 
 type instance DispatchOf DB = 'Dynamic
 
--- This instance is not necessary to make the adapter work, but it can be useful
--- for library users.
 instance DB :> es => PQ.MonadDB (Eff es) where
   runQuery = send . RunQuery
   getQueryResult = send GetQueryResult
@@ -97,15 +94,15 @@ runEffectDB connectionSource transactionSettings =
           \unlift -> unlift action
     GetNotification time -> unDBEff $ PQ.getNotification time
   where
-    runWithState :: Eff (DBState es : es) a -> Eff es a
+    runWithState :: Eff (State (DBState es) : es) a -> Eff es a
     runWithState eff =
       PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
         let dbState0 = mkDBState (PQ.unConnectionSource connectionSource) conn transactionSettings
         evalState dbState0 $ handleAutoTransaction transactionSettings withTransaction' eff
     withTransaction' ::
       PQ.TransactionSettings ->
-      Eff (DBState es : es) a ->
-      Eff (DBState es : es) a
+      Eff (State (DBState es) : es) a ->
+      Eff (State (DBState es) : es) a
     withTransaction' ts eff = unDBEff . PQ.withTransaction' ts $ DBEff eff
 
 mkDBState ::
@@ -129,8 +126,12 @@ handleAutoTransaction ::
   m a ->
   m a
 handleAutoTransaction transactionSettings withTransaction action =
-  -- REVIEW: Why don't we have to set `tsAutoTransaction` to `False` in the
-  -- context of the `action`?
+  -- We don't set tsAutoTransaction to False in the context of the action
+  -- because if the action calls commit inside, then with tsAutoTransaction
+  -- another transaction should be started automatically and if it's not set, it
+  -- won't happen (see source of the commit' function).  On the other hand,
+  -- withTransaction itself uses commit' and there we don't want to start
+  -- another transaction.
   if PQ.tsAutoTransaction transactionSettings
     then withTransaction (transactionSettings {PQ.tsAutoTransaction = False}) action
     else action
@@ -141,30 +142,35 @@ handleAutoTransaction transactionSettings withTransaction action =
 
 -- | Newtype wrapper over the internal DB effect stack
 newtype DBEff es a = DBEff
-  { unDBEff :: Eff (DBState es : es) a
+  { unDBEff :: Eff (State (DBState es) : es) a
   }
   deriving newtype (Functor, Applicative, Monad, MonadThrow, MonadCatch, MonadMask)
 
--- | Internal state effect used to reinterpret the `DB` effect
-type DBState es = State (PQ.DBState (DBEff es))
+-- | Internal state used to reinterpret the `DB` effect
+type DBState es = PQ.DBState (DBEff es)
 
--- Convenience @MonadBase IO@ instance
+-- Convenience `MonadIO` instance
+instance (IOE :> es) => MonadIO (DBEff es) where
+  liftIO b = DBEff $ liftIO b
+
+-- Provisional @MonadBase IO@ instance, to be removed once hpqtypes stops using
+-- @MonadBase IO@ itself
 instance (IOE :> es) => MonadBase IO (DBEff es) where
   liftBase b = DBEff $ liftBase b
 
--- Convenience instance to avoid writing @DBEff get@ etc.
--- REVIEW: This comes with the mtl dependency, so maybe it isn't worth it?  The
--- `get`, `put`, and `modify` helper functions could be also defined
--- explicitely.
-instance MonadState (PQ.DBState (DBEff es)) (DBEff es) where
-  get = DBEff State.get
-  put = DBEff . State.put
-  state = DBEff . State.state
+get :: DBEff es (DBState es)
+get = DBEff State.get
+
+put :: DBState es -> DBEff es ()
+put = DBEff . State.put
+
+modify :: (DBState es -> DBState es) -> DBEff es ()
+modify = DBEff . State.modify
 
 instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) where
   runQuery sql = do
     dbState <- get
-    (result, dbState') <- liftBase $ PQ.runQueryIO sql dbState
+    (result, dbState') <- liftIO $ PQ.runQueryIO sql dbState
     put dbState'
     pure result
   getQueryResult =
@@ -173,13 +179,13 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) wher
     modify $ \st -> st {PQ.dbQueryResult = Nothing}
   getConnectionStats = do
     dbState <- get
-    mconn <- liftBase . readMVar . PQ.unConnection $ PQ.dbConnection dbState
+    mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState
     case mconn of
       Nothing -> DBEff . throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
       Just cd -> pure $ PQ.cdStats cd
   runPreparedQuery queryName sql = do
     dbState <- get
-    (result, dbState') <- liftBase $ PQ.runPreparedQueryIO queryName sql dbState
+    (result, dbState') <- liftIO $ PQ.runPreparedQueryIO queryName sql dbState
     put dbState'
     pure result
   getLastQuery = PQ.dbLastQuery <$> get
@@ -200,4 +206,4 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) wher
       handleAutoTransaction transactionSettings PQ.withTransaction' action
   getNotification time = do
     dbState <- get
-    liftBase $ PQ.getNotificationIO dbState time
+    liftIO $ PQ.getNotificationIO dbState time
