@@ -1,2 +1,8 @@
 packages:
     ./
+
+source-repository-package
+    type: git
+    location: https://github.com/arybczak/effectful
+    subdir: effectful-core
+    tag: 78c860f13eff5afe511c22253fa8b7daf9baa2bd
