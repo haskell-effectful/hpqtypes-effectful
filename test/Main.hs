@@ -6,7 +6,7 @@
 module Main (main) where
 
 import Control.Monad (void)
-import Control.Monad.Base (MonadBase, liftBase)
+import Control.Monad.Base (MonadBase)
 import Control.Monad.Catch (MonadMask)
 import Data.Int (Int32)
 import qualified Data.Text as T
@@ -40,17 +40,17 @@ testGetLastQuery = do
       -- Run the first query and perform some basic sanity checks
       let sql = mkSQL "SELECT 1"
       rowNo <- runQuery sql
-      liftBase $ assertEqual "One row should be retrieved" 1 rowNo
+      liftIO $ assertEqual "One row should be retrieved" 1 rowNo
       queryResult :: [Int32] <- fetchMany runIdentity
-      liftBase $ assertEqual "Result should be [1]" [1] queryResult
+      liftIO $ assertEqual "Result should be [1]" [1] queryResult
       (SomeSQL lastQuery) <- getLastQuery
-      liftBase $ assertEqual "SQL don't match" (show sql) (show lastQuery)
+      liftIO $ assertEqual "SQL don't match" (show sql) (show lastQuery)
     do
       -- Run the second query and check that `getLastQuery` gives updated result
       let newSQL = mkSQL "SELECT 2"
       void $ runQuery newSQL
       (SomeSQL newLastQuery) <- getLastQuery
-      liftBase $ assertEqual "SQL don't match" (show newSQL) (show newLastQuery)
+      liftIO $ assertEqual "SQL don't match" (show newSQL) (show newLastQuery)
 
 testWithFrozenLastQuery :: Assertion
 testWithFrozenLastQuery = do
@@ -63,9 +63,9 @@ testWithFrozenLastQuery = do
     withFrozenLastQuery $ do
       void . runQuery $ mkSQL "SELECT 2"
       getLastQuery >>= \(SomeSQL lastQuery) ->
-        liftBase $ assertEqual "The last query before freeze should be reported" (show sql) (show lastQuery)
+        liftIO $ assertEqual "The last query before freeze should be reported" (show sql) (show lastQuery)
     getLastQuery >>= \(SomeSQL lastQuery) ->
-      liftBase $ assertEqual "The last query before freeze should be reported" (show sql) (show lastQuery)
+      liftIO $ assertEqual "The last query before freeze should be reported" (show sql) (show lastQuery)
 
 testConnectionStatsWithNewConnection :: Assertion
 testConnectionStatsWithNewConnection = do
@@ -82,17 +82,17 @@ testConnectionStatsWithNewConnection = do
       void . runQuery $ mkSQL "SELECT 1"
       void . runQuery $ mkSQL "SELECT 2"
       connectionStats <- getConnectionStats
-      liftBase $ assertEqual "Incorrect connection stats" (ConnectionStats 2 2 2 0) connectionStats
+      liftIO $ assertEqual "Incorrect connection stats" (ConnectionStats 2 2 2 0) connectionStats
     do
       void . runQuery $ mkSQL "CREATE TABLE some_table (field INT)"
       void . runQuery $ mkSQL "BEGIN"
       void . runQuery $ mkSQL "INSERT INTO some_table VALUES (1)"
       withNewConnection $ do
         connectionStats <- getConnectionStats
-        liftBase $ assertEqual "Connection stats should be reset" (ConnectionStats 0 0 0 0) connectionStats
+        liftIO $ assertEqual "Connection stats should be reset" (ConnectionStats 0 0 0 0) connectionStats
         noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
-        liftBase $ assertEqual "Results should not be visible yet" 0 noOfResults
+        liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
       void . runQuery $ mkSQL "COMMIT"
       noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
-      liftBase $ assertEqual "Results should be visible" 1 noOfResults
+      liftIO $ assertEqual "Results should be visible" 1 noOfResults
       void . runQuery $ mkSQL "DROP TABLE some_table"
