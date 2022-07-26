@@ -22,7 +22,7 @@ where
 
 import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Base (MonadBase, liftBase)
-import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow)
+import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow, bracket)
 import Control.Monad.State.Class (MonadState, get, modify, put, state)
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
@@ -187,20 +187,17 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) wher
   setTransactionSettings settings = modify $ \st' ->
     st' {PQ.dbTransactionSettings = settings}
   withFrozenLastQuery action = do
-    st <- get
-    put st {PQ.dbRecordLastQuery = False}
-    result <- action
-    modify $ \st' ->
-      st' {PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st}
-    pure result
-  withNewConnection action = do
-    dbState <- get
-    result <- PQ.withConnection (PQ.dbConnectionSource dbState) $ \newConn -> do
+    let restoreRecordLastQuery st =
+          modify $ \st' ->
+            st' {PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st}
+    bracket get restoreRecordLastQuery $ \st -> do
+      put st {PQ.dbRecordLastQuery = False}
+      action
+  withNewConnection action = bracket get put $ \dbState -> do
+    PQ.withConnection (PQ.dbConnectionSource dbState) $ \newConn -> do
       let transactionSettings = PQ.dbTransactionSettings dbState
       put $ mkDBState (PQ.dbConnectionSource dbState) newConn transactionSettings
       handleAutoTransaction transactionSettings PQ.withTransaction' action
-    put dbState
-    pure result
   getNotification time = do
     dbState <- get
     liftBase $ PQ.getNotificationIO dbState time
