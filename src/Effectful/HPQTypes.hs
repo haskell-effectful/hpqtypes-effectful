@@ -82,12 +82,13 @@ runEffectDB connectionSource transactionSettings =
     ClearQueryResult ->
       modify $ \(st :: PQ.DBState (Eff es)) -> st {PQ.dbQueryResult = Nothing}
     WithFrozenLastQuery (action :: Eff localEs b) -> do
-      st :: PQ.DBState (Eff es) <- get
-      put st {PQ.dbRecordLastQuery = False}
-      result <- localSeqUnlift env $ \unlift -> unlift action
-      modify $ \(st' :: PQ.DBState (Eff es)) ->
-        st' {PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st}
-      pure result
+      let restoreRecordLastQuery st =
+            modify $ \(st' :: PQ.DBState (Eff es)) ->
+              st' {PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st}
+      bracket get restoreRecordLastQuery $
+        \(st :: PQ.DBState (Eff es)) -> do
+          put st {PQ.dbRecordLastQuery = False}
+          localSeqUnlift env $ \unlift -> unlift action
     GetConnectionStats -> do
       dbState :: PQ.DBState (Eff es) <- get
       mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState
