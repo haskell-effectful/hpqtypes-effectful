@@ -83,14 +83,12 @@ runDB connectionSource transactionSettings =
     GetLastQuery -> unDBEff PQ.getLastQuery
     GetTransactionSettings -> unDBEff PQ.getTransactionSettings
     SetTransactionSettings settings -> unDBEff $ PQ.setTransactionSettings settings
-    WithFrozenLastQuery (action :: Eff localEs b) ->
-      unDBEff . PQ.withFrozenLastQuery . DBEff $
-        localSeqUnlift env $
-          \unlift -> unlift action
-    WithNewConnection (action :: Eff localEs b) ->
-      unDBEff . PQ.withNewConnection . DBEff $
-        localSeqUnlift env $
-          \unlift -> unlift action
+    WithFrozenLastQuery (action :: Eff localEs b) -> do
+      localSeqUnlift env $ \unlift -> do
+        unDBEff . PQ.withFrozenLastQuery . DBEff $ unlift action
+    WithNewConnection (action :: Eff localEs b) -> do
+      localSeqUnlift env $ \unlift -> do
+        unDBEff . PQ.withNewConnection . DBEff $ unlift action
     GetNotification time -> unDBEff $ PQ.getNotification time
   where
     runWithState :: Eff (State (DBState es) : es) a -> Eff es a
