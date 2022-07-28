@@ -48,7 +48,7 @@ testGetLastQuery = do
     do
       -- Run the second query and check that `getLastQuery` gives updated result
       let newSQL = mkSQL "SELECT 2"
-      void $ runQuery newSQL
+      runQuery_ newSQL
       (SomeSQL newLastQuery) <- getLastQuery
       liftIO $ assertEqual "SQL don't match" (show newSQL) (show newLastQuery)
 
@@ -59,9 +59,9 @@ testWithFrozenLastQuery = do
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
     let sql = mkSQL "SELECT 1"
-    void $ runQuery sql
+    runQuery_ sql
     withFrozenLastQuery $ do
-      void . runQuery $ mkSQL "SELECT 2"
+      runQuery_ $ mkSQL "SELECT 2"
       getLastQuery >>= \(SomeSQL lastQuery) ->
         liftIO $ assertEqual "The last query before freeze should be reported" (show sql) (show lastQuery)
     getLastQuery >>= \(SomeSQL lastQuery) ->
@@ -79,20 +79,20 @@ testConnectionStatsWithNewConnection = do
           }
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) transactionSettings $ do
     do
-      void . runQuery $ mkSQL "SELECT 1"
-      void . runQuery $ mkSQL "SELECT 2"
+      runQuery_ $ mkSQL "SELECT 1"
+      runQuery_ $ mkSQL "SELECT 2"
       connectionStats <- getConnectionStats
       liftIO $ assertEqual "Incorrect connection stats" (ConnectionStats 2 2 2 0) connectionStats
     do
-      void . runQuery $ mkSQL "CREATE TABLE some_table (field INT)"
-      void . runQuery $ mkSQL "BEGIN"
-      void . runQuery $ mkSQL "INSERT INTO some_table VALUES (1)"
+      runQuery_ $ mkSQL "CREATE TABLE some_table (field INT)"
+      runQuery_ $ mkSQL "BEGIN"
+      runQuery_ $ mkSQL "INSERT INTO some_table VALUES (1)"
       withNewConnection $ do
         connectionStats <- getConnectionStats
         liftIO $ assertEqual "Connection stats should be reset" (ConnectionStats 0 0 0 0) connectionStats
         noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
         liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
-      void . runQuery $ mkSQL "COMMIT"
+      runQuery_ $ mkSQL "COMMIT"
       noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
       liftIO $ assertEqual "Results should be visible" 1 noOfResults
-      void . runQuery $ mkSQL "DROP TABLE some_table"
+      runQuery_ $ mkSQL "DROP TABLE some_table"
