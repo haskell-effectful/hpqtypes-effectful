@@ -35,7 +35,7 @@ testGetLastQuery = do
   dbUrl <- T.pack <$> getEnv "DATABASE_URL"
   let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
-  void . runEff . runErrorNoCallStack @HPQTypesError . runEffectDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
+  void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
     do
       -- Run the first query and perform some basic sanity checks
       let sql = mkSQL "SELECT 1"
@@ -57,7 +57,7 @@ testWithFrozenLastQuery = do
   dbUrl <- T.pack <$> getEnv "DATABASE_URL"
   let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
-  void . runEff . runErrorNoCallStack @HPQTypesError . runEffectDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
+  void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
     let sql = mkSQL "SELECT 1"
     void $ runQuery sql
     withFrozenLastQuery $ do
@@ -77,7 +77,7 @@ testConnectionStatsWithNewConnection = do
           { tsIsolationLevel = ReadCommitted
           , tsAutoTransaction = False
           }
-  void . runEff . runErrorNoCallStack @HPQTypesError . runEffectDB (unConnectionSource connectionSource) transactionSettings $ do
+  void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) transactionSettings $ do
     do
       void . runQuery $ mkSQL "SELECT 1"
       void . runQuery $ mkSQL "SELECT 2"

@@ -16,7 +16,7 @@
 
 module Effectful.HPQTypes
   ( DB (..)
-  , runEffectDB
+  , runDB
   )
 where
 
@@ -66,14 +66,14 @@ instance DB :> es => PQ.MonadDB (Eff es) where
   getNotification = send . GetNotification
 
 -- | The default effect runner.
-runEffectDB ::
+runDB ::
   forall es a.
   (IOE :> es, Error PQ.HPQTypesError :> es) =>
   PQ.ConnectionSourceM (Eff es) ->
   PQ.TransactionSettings ->
   Eff (DB : es) a ->
   Eff es a
-runEffectDB connectionSource transactionSettings =
+runDB connectionSource transactionSettings =
   reinterpret runWithState $ \env -> \case
     RunQuery sql -> unDBEff $ PQ.runQuery sql
     GetQueryResult -> unDBEff PQ.getQueryResult
