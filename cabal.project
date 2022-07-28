@@ -1,2 +1,8 @@
 packages:
     ./
+
+source-repository-package
+    type: git
+    location: https://github.com/haskell-effectful/effectful
+    subdir: effectful-core
+    tag: ca57c913c78d60fbb6e2eef09500d4df4472e6ab

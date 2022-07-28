@@ -6,7 +6,7 @@
 module Main (main) where
 
 import Control.Monad (void)
-import Control.Monad.Base (MonadBase, liftBase)
+import Control.Monad.Base (MonadBase)
 import Control.Monad.Catch (MonadMask)
 import Data.Int (Int32)
 import qualified Data.Text as T
@@ -25,47 +25,74 @@ tests :: TestTree
 tests =
   testGroup
     "tests"
-    [testCase "test PrintConnectionStats" testPrintConnectionStats]
+    [ testCase "test getLastQuery" testGetLastQuery
+    , testCase "test withFrozenLastQuery" testWithFrozenLastQuery
+    , testCase "test connection stats retrieval with new connection" testConnectionStatsWithNewConnection
+    ]
 
-testPrintConnectionStats :: Assertion
-testPrintConnectionStats = do
+testGetLastQuery :: Assertion
+testGetLastQuery = do
   dbUrl <- T.pack <$> getEnv "DATABASE_URL"
   let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
-      transactionSettings = defaultTransactionSettings
-      sql = "SELECT 1"
-      program :: Eff '[DB, Error HPQTypesError, IOE] ()
-      program = do
-        rowNo <- runQuery $ mkSQL sql
-        liftBase $ putStr "Row number: " >> print rowNo
+  void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
+    do
+      -- Run the first query and perform some basic sanity checks
+      let sql = mkSQL "SELECT 1"
+      rowNo <- runQuery sql
+      liftIO $ assertEqual "One row should be retrieved" 1 rowNo
+      queryResult :: [Int32] <- fetchMany runIdentity
+      liftIO $ assertEqual "Result should be [1]" [1] queryResult
+      (SomeSQL lastQuery) <- getLastQuery
+      liftIO $ assertEqual "SQL don't match" (show sql) (show lastQuery)
+    do
+      -- Run the second query and check that `getLastQuery` gives updated result
+      let newSQL = mkSQL "SELECT 2"
+      runQuery_ newSQL
+      (SomeSQL newLastQuery) <- getLastQuery
+      liftIO $ assertEqual "SQL don't match" (show newSQL) (show newLastQuery)
 
-        queryResult :: [Int32] <- fetchMany runIdentity
-        liftBase $ putStr "Result(s): " >> print queryResult
+testWithFrozenLastQuery :: Assertion
+testWithFrozenLastQuery = do
+  dbUrl <- T.pack <$> getEnv "DATABASE_URL"
+  let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
+      connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+  void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
+    let sql = mkSQL "SELECT 1"
+    runQuery_ sql
+    withFrozenLastQuery $ do
+      runQuery_ $ mkSQL "SELECT 2"
+      getLastQuery >>= \(SomeSQL lastQuery) ->
+        liftIO $ assertEqual "The last query before freeze should be reported" (show sql) (show lastQuery)
+    getLastQuery >>= \(SomeSQL lastQuery) ->
+      liftIO $ assertEqual "The last query before freeze should be reported" (show sql) (show lastQuery)
 
-        (SomeSQL lq) <- getLastQuery
-        withFrozenLastQuery $ do
-          let newSQL = "SELECT 2"
-          void . runQuery $ mkSQL newSQL
-          (SomeSQL newLq) <- getLastQuery
-          liftIO $ assertEqual "SQL don't match" (show newLq) (show $ mkSQL sql)
-        liftIO $ assertEqual "SQL don't match" (show lq) (show $ mkSQL sql)
-
+testConnectionStatsWithNewConnection :: Assertion
+testConnectionStatsWithNewConnection = do
+  dbUrl <- T.pack <$> getEnv "DATABASE_URL"
+  let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
+      connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+      transactionSettings =
+        defaultTransactionSettings
+          { tsIsolationLevel = ReadCommitted
+          , tsAutoTransaction = False
+          }
+  void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) transactionSettings $ do
+    do
+      runQuery_ $ mkSQL "SELECT 1"
+      runQuery_ $ mkSQL "SELECT 2"
+      connectionStats <- getConnectionStats
+      liftIO $ assertEqual "Incorrect connection stats" (ConnectionStats 2 2 2 0) connectionStats
+    do
+      runQuery_ $ mkSQL "CREATE TABLE some_table (field INT)"
+      runQuery_ $ mkSQL "BEGIN"
+      runQuery_ $ mkSQL "INSERT INTO some_table VALUES (1)"
+      withNewConnection $ do
         connectionStats <- getConnectionStats
-        liftIO $ putStr "Connection stats: " >> print connectionStats
-
-        setTransactionSettings $ defaultTransactionSettings {tsIsolationLevel = ReadCommitted}
-        void . runQuery $ mkSQL "CREATE TABLE some_table (field INT)"
-        void . runQuery $ mkSQL "BEGIN"
-        void . runQuery $ mkSQL "INSERT INTO some_table VALUES (1)"
-        withNewConnection $ do
-          newConnectionStats <- getConnectionStats
-          liftIO $ putStr "New connection stats: " >> print newConnectionStats
-
-          setTransactionSettings $ defaultTransactionSettings {tsIsolationLevel = ReadCommitted}
-          noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
-          liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
-        void . runQuery $ mkSQL "COMMIT"
+        liftIO $ assertEqual "Connection stats should be reset" (ConnectionStats 0 0 0 0) connectionStats
         noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
-        liftIO $ assertEqual "Results should be visible" 1 noOfResults
-        void . runQuery $ mkSQL "DROP TABLE some_table"
-  (runEff . runErrorNoCallStack @HPQTypesError $ runEffectDB connectionSource transactionSettings program) >>= print
+        liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
+      runQuery_ $ mkSQL "COMMIT"
+      noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
+      liftIO $ assertEqual "Results should be visible" 1 noOfResults
+      runQuery_ $ mkSQL "DROP TABLE some_table"

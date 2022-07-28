@@ -1,7 +1,11 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -12,13 +16,12 @@
 
 module Effectful.HPQTypes
   ( DB (..)
-  , runEffectDB
+  , runDB
   )
 where
 
 import Control.Concurrent.MVar (readMVar)
-import Control.Monad.Base (MonadBase, liftBase)
-import Control.Monad.Catch (MonadMask, bracket)
+import Control.Monad.Catch
 import qualified Database.PostgreSQL.PQTypes as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
@@ -27,7 +30,8 @@ import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import Effectful
 import Effectful.Dispatch.Dynamic
 import Effectful.Error.Static
-import Effectful.State.Static.Local
+import Effectful.State.Static.Local (State, evalState)
+import qualified Effectful.State.Static.Local as State
 
 -- | An effect that allows the use of the hpqtypes bindings for libpqtypes in the effectful ecosystem.
 --
@@ -62,83 +66,151 @@ instance DB :> es => PQ.MonadDB (Eff es) where
   getNotification = send . GetNotification
 
 -- | The default effect runner.
-runEffectDB ::
+runDB ::
   forall es a.
   (IOE :> es, Error PQ.HPQTypesError :> es) =>
-  PQ.ConnectionSource [MonadBase IO, MonadMask] ->
+  PQ.ConnectionSourceM (Eff es) ->
   PQ.TransactionSettings ->
   Eff (DB : es) a ->
   Eff es a
-runEffectDB connectionSource transactionSettings =
+runDB connectionSource transactionSettings =
   reinterpret runWithState $ \env -> \case
-    RunQuery sql -> do
-      dbState <- get
-      (result, dbState') <- liftBase $ PQ.runQueryIO sql (dbState :: PQ.DBState (Eff es))
-      put dbState'
-      pure result
-    GetQueryResult -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      pure $ PQ.dbQueryResult dbState
-    ClearQueryResult ->
-      modify $ \(st :: PQ.DBState (Eff es)) -> st {PQ.dbQueryResult = Nothing}
-    WithFrozenLastQuery (action :: Eff localEs b) -> do
-      let restoreRecordLastQuery st =
-            modify $ \(st' :: PQ.DBState (Eff es)) ->
-              st' {PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st}
-      bracket get restoreRecordLastQuery $
-        \(st :: PQ.DBState (Eff es)) -> do
-          put st {PQ.dbRecordLastQuery = False}
-          localSeqUnlift env $ \unlift -> unlift action
-    GetConnectionStats -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState
-      case mconn of
-        Nothing -> throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
-        Just cd -> return $ PQ.cdStats cd
-    RunPreparedQuery queryName sql -> do
-      dbState <- get
-      (result, dbState') <- liftBase $ PQ.runPreparedQueryIO queryName sql (dbState :: PQ.DBState (Eff es))
-      put dbState'
-      pure result
-    GetLastQuery -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      pure $ PQ.dbLastQuery dbState
-    GetTransactionSettings -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      pure $ PQ.dbTransactionSettings dbState
-    SetTransactionSettings settings -> modify $ \(st' :: PQ.DBState (Eff es)) ->
-      st' {PQ.dbTransactionSettings = settings}
-    WithNewConnection (action :: Eff localEs b) -> do
-      runWithNewConnection $ localSeqUnlift env (\unlift -> unlift action)
-    GetNotification time -> do
-      dbState :: PQ.DBState (Eff es) <- get
-      liftBase $ PQ.getNotificationIO dbState time
+    RunQuery sql -> unDBEff $ PQ.runQuery sql
+    GetQueryResult -> unDBEff PQ.getQueryResult
+    ClearQueryResult -> unDBEff PQ.clearQueryResult
+    GetConnectionStats -> unDBEff PQ.getConnectionStats
+    RunPreparedQuery queryName sql -> unDBEff $ PQ.runPreparedQuery queryName sql
+    GetLastQuery -> unDBEff PQ.getLastQuery
+    GetTransactionSettings -> unDBEff PQ.getTransactionSettings
+    SetTransactionSettings settings -> unDBEff $ PQ.setTransactionSettings settings
+    WithFrozenLastQuery (action :: Eff localEs b) ->
+      unDBEff . PQ.withFrozenLastQuery . DBEff $
+        localSeqUnlift env $
+          \unlift -> unlift action
+    WithNewConnection (action :: Eff localEs b) ->
+      unDBEff . PQ.withNewConnection . DBEff $
+        localSeqUnlift env $
+          \unlift -> unlift action
+    GetNotification time -> unDBEff $ PQ.getNotification time
   where
-    runWithState :: Eff (State (PQ.DBState (Eff es)) : es) a -> Eff es a
+    runWithState :: Eff (State (DBState es) : es) a -> Eff es a
     runWithState eff =
-      PQ.withConnection (PQ.unConnectionSource connectionSource) $ \conn -> do
-        let dbState0 = mkDBState conn transactionSettings
-        evalState dbState0 eff :: Eff es a
-    runWithNewConnection ::
-      Eff (State (PQ.DBState (Eff es)) : es) b ->
-      Eff (State (PQ.DBState (Eff es)) : es) b
-    runWithNewConnection action =
-      bracket get put $ \(dbState :: PQ.DBState (Eff es)) ->
-        PQ.withConnection
-          (PQ.unConnectionSource connectionSource)
-          $ \newConn -> do
-            -- TODO: We do not pass the current connection source to the new DB
-            -- state, which differs from the original code.
-            put $ mkDBState newConn (PQ.dbTransactionSettings dbState)
-            action
+      PQ.withConnection connectionSource $ \conn -> do
+        let dbState0 = mkDBState connectionSource conn transactionSettings
+        evalState dbState0 $ handleAutoTransaction transactionSettings withTransaction' eff
+    withTransaction' ::
+      PQ.TransactionSettings ->
+      Eff (State (DBState es) : es) a ->
+      Eff (State (DBState es) : es) a
+    withTransaction' ts eff = unDBEff . PQ.withTransaction' ts $ DBEff eff
 
-    mkDBState :: PQ.Connection -> PQ.TransactionSettings -> PQ.DBState (Eff es)
-    mkDBState conn ts =
-      PQ.DBState
-        { PQ.dbConnection = conn
-        , PQ.dbConnectionSource = PQ.unConnectionSource connectionSource
-        , PQ.dbTransactionSettings = ts
-        , PQ.dbLastQuery = PQ.SomeSQL (mempty :: PQ.SQL)
-        , PQ.dbRecordLastQuery = True
-        , PQ.dbQueryResult = Nothing
-        }
+mkDBState ::
+  PQ.ConnectionSourceM m ->
+  PQ.Connection ->
+  PQ.TransactionSettings ->
+  PQ.DBState m
+mkDBState connectionSource conn ts =
+  PQ.DBState
+    { PQ.dbConnection = conn
+    , PQ.dbConnectionSource = connectionSource
+    , PQ.dbTransactionSettings = ts
+    , PQ.dbLastQuery = PQ.SomeSQL (mempty :: PQ.SQL)
+    , PQ.dbRecordLastQuery = True
+    , PQ.dbQueryResult = Nothing
+    }
+
+handleAutoTransaction ::
+  PQ.TransactionSettings ->
+  (PQ.TransactionSettings -> m a -> m a) ->
+  m a ->
+  m a
+handleAutoTransaction transactionSettings withTransaction action =
+  -- We don't set tsAutoTransaction to False in the context of the action
+  -- because if the action calls commit inside, then with tsAutoTransaction
+  -- another transaction should be started automatically and if it's not set, it
+  -- won't happen (see source of the commit' function).  On the other hand,
+  -- withTransaction itself uses commit' and there we don't want to start
+  -- another transaction.
+  if PQ.tsAutoTransaction transactionSettings
+    then withTransaction (transactionSettings {PQ.tsAutoTransaction = False}) action
+    else action
+
+---------------------------------------------------
+-- Internal effect stack
+---------------------------------------------------
+
+-- | Newtype wrapper over the internal DB effect stack
+newtype DBEff es a = DBEff
+  { unDBEff :: Eff (State (DBState es) : es) a
+  }
+  deriving newtype (Functor, Applicative, Monad, MonadThrow, MonadCatch, MonadMask)
+
+-- | Internal state used to reinterpret the `DB` effect
+type DBState es = PQ.DBState (Eff es)
+
+-- Convenience `MonadIO` instance
+instance (IOE :> es) => MonadIO (DBEff es) where
+  liftIO b = DBEff $ liftIO b
+
+get :: DBEff es (DBState es)
+get = DBEff State.get
+
+put :: DBState es -> DBEff es ()
+put = DBEff . State.put
+
+modify :: (DBState es -> DBState es) -> DBEff es ()
+modify = DBEff . State.modify
+
+instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) where
+  runQuery sql = do
+    dbState <- get
+    (result, dbState') <- liftIO $ PQ.runQueryIO sql dbState
+    put dbState'
+    pure result
+
+  getQueryResult =
+    get >>= \dbState -> pure $ PQ.dbQueryResult dbState
+
+  clearQueryResult =
+    modify $ \st -> st {PQ.dbQueryResult = Nothing}
+
+  getConnectionStats = do
+    dbState <- get
+    mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState
+    case mconn of
+      Nothing -> DBEff . throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
+      Just cd -> pure $ PQ.cdStats cd
+
+  runPreparedQuery queryName sql = do
+    dbState <- get
+    (result, dbState') <- liftIO $ PQ.runPreparedQueryIO queryName sql dbState
+    put dbState'
+    pure result
+
+  getLastQuery = PQ.dbLastQuery <$> get
+
+  getTransactionSettings = PQ.dbTransactionSettings <$> get
+
+  setTransactionSettings settings = modify $ \st' ->
+    st' {PQ.dbTransactionSettings = settings}
+
+  withFrozenLastQuery action = do
+    let restoreRecordLastQuery st =
+          modify $ \st' ->
+            st' {PQ.dbRecordLastQuery = PQ.dbRecordLastQuery st}
+    bracket get restoreRecordLastQuery $ \st -> do
+      put st {PQ.dbRecordLastQuery = False}
+      action
+
+  withNewConnection action = DBEff $ do
+    dbState0 <- State.get
+    raiseWith SeqUnlift $ \lower -> do
+      PQ.withConnection (PQ.dbConnectionSource dbState0) $ \newConn -> lower $ do
+        let transactionSettings = PQ.dbTransactionSettings dbState0
+            dbState = mkDBState (PQ.dbConnectionSource dbState0) newConn transactionSettings
+        unDBEff . bracket_ (put dbState) (put dbState0) $ do
+          handleAutoTransaction transactionSettings PQ.withTransaction' action
+
+  getNotification time = do
+    dbState <- get
+    liftIO $ PQ.getNotificationIO dbState time
