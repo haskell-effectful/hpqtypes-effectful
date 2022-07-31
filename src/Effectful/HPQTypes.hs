@@ -29,7 +29,6 @@ import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import Effectful
 import Effectful.Dispatch.Dynamic
-import Effectful.Error.Static
 import Effectful.State.Static.Local (State, evalState)
 import qualified Effectful.State.Static.Local as State
 
@@ -68,7 +67,7 @@ instance DB :> es => PQ.MonadDB (Eff es) where
 -- | The default effect runner.
 runDB ::
   forall es a.
-  (IOE :> es, Error PQ.HPQTypesError :> es) =>
+  (IOE :> es) =>
   PQ.ConnectionSourceM (Eff es) ->
   PQ.TransactionSettings ->
   Eff (DB : es) a ->
@@ -159,7 +158,7 @@ put = DBEff . State.put
 modify :: (DBState es -> DBState es) -> DBEff es ()
 modify = DBEff . State.modify
 
-instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) where
+instance (IOE :> es) => PQ.MonadDB (DBEff es) where
   runQuery sql = do
     dbState <- get
     (result, dbState') <- liftIO $ PQ.runQueryIO sql dbState
@@ -176,7 +175,7 @@ instance (IOE :> es, Error PQ.HPQTypesError :> es) => PQ.MonadDB (DBEff es) wher
     dbState <- get
     mconn <- liftIO . readMVar . PQ.unConnection $ PQ.dbConnection dbState
     case mconn of
-      Nothing -> DBEff . throwError $ PQ.HPQTypesError "getConnectionStats: no connection"
+      Nothing -> PQ.throwDB $ PQ.HPQTypesError "getConnectionStats: no connection"
       Just cd -> pure $ PQ.cdStats cd
 
   runPreparedQuery queryName sql = do
