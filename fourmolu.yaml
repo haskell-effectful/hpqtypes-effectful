@@ -1,10 +1,10 @@
 indentation: 2
+function-arrows: leading
 comma-style: leading
-import-export-comma-style: leading
-record-brace-space: true
+import-export-style: leading
 indent-wheres: true
-diff-friendly-import-export: false
-respectful: false
-haddock-style: single-line
+record-brace-space: true
 newlines-between-decls: 1
+haddock-style: single-line
+respectful: false
 fixities: []

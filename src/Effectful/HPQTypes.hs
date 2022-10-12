@@ -1,16 +1,3 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -65,13 +52,13 @@ instance DB :> es => PQ.MonadDB (Eff es) where
   getNotification = send . GetNotification
 
 -- | The default effect runner.
-runDB ::
-  forall es a.
-  (IOE :> es) =>
-  PQ.ConnectionSourceM (Eff es) ->
-  PQ.TransactionSettings ->
-  Eff (DB : es) a ->
-  Eff es a
+runDB
+  :: forall es a
+   . (IOE :> es)
+  => PQ.ConnectionSourceM (Eff es)
+  -> PQ.TransactionSettings
+  -> Eff (DB : es) a
+  -> Eff es a
 runDB connectionSource transactionSettings =
   reinterpret runWithState $ \env -> \case
     RunQuery sql -> unDBEff $ PQ.runQuery sql
@@ -95,17 +82,17 @@ runDB connectionSource transactionSettings =
       PQ.withConnection connectionSource $ \conn -> do
         let dbState0 = mkDBState connectionSource conn transactionSettings
         evalState dbState0 $ handleAutoTransaction transactionSettings withTransaction' eff
-    withTransaction' ::
-      PQ.TransactionSettings ->
-      Eff (State (DBState es) : es) a ->
-      Eff (State (DBState es) : es) a
+    withTransaction'
+      :: PQ.TransactionSettings
+      -> Eff (State (DBState es) : es) a
+      -> Eff (State (DBState es) : es) a
     withTransaction' ts eff = unDBEff . PQ.withTransaction' ts $ DBEff eff
 
-mkDBState ::
-  PQ.ConnectionSourceM m ->
-  PQ.Connection ->
-  PQ.TransactionSettings ->
-  PQ.DBState m
+mkDBState
+  :: PQ.ConnectionSourceM m
+  -> PQ.Connection
+  -> PQ.TransactionSettings
+  -> PQ.DBState m
 mkDBState connectionSource conn ts =
   PQ.DBState
     { PQ.dbConnection = conn
@@ -116,11 +103,11 @@ mkDBState connectionSource conn ts =
     , PQ.dbQueryResult = Nothing
     }
 
-handleAutoTransaction ::
-  PQ.TransactionSettings ->
-  (PQ.TransactionSettings -> m a -> m a) ->
-  m a ->
-  m a
+handleAutoTransaction
+  :: PQ.TransactionSettings
+  -> (PQ.TransactionSettings -> m a -> m a)
+  -> m a
+  -> m a
 handleAutoTransaction transactionSettings withTransaction action =
   -- We don't set tsAutoTransaction to False in the context of the action
   -- because if the action calls commit inside, then with tsAutoTransaction
