@@ -1,7 +1,4 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Main (main) where
 
@@ -14,7 +11,7 @@ import Database.PostgreSQL.PQTypes hiding (queryResult)
 import Effectful
 import Effectful.Error.Static
 import Effectful.HPQTypes
-import System.Environment (getEnv)
+import System.Environment (lookupEnv)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -32,7 +29,7 @@ tests =
 
 testGetLastQuery :: Assertion
 testGetLastQuery = do
-  dbUrl <- T.pack <$> getEnv "DATABASE_URL"
+  dbUrl <- getConnString
   let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
@@ -54,7 +51,7 @@ testGetLastQuery = do
 
 testWithFrozenLastQuery :: Assertion
 testWithFrozenLastQuery = do
-  dbUrl <- T.pack <$> getEnv "DATABASE_URL"
+  dbUrl <- getConnString
   let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
@@ -69,7 +66,7 @@ testWithFrozenLastQuery = do
 
 testConnectionStatsWithNewConnection :: Assertion
 testConnectionStatsWithNewConnection = do
-  dbUrl <- T.pack <$> getEnv "DATABASE_URL"
+  dbUrl <- getConnString
   let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
       connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
       transactionSettings =
@@ -96,3 +93,15 @@ testConnectionStatsWithNewConnection = do
       noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
       liftIO $ assertEqual "Results should be visible" 1 noOfResults
       runQuery_ $ mkSQL "DROP TABLE some_table"
+
+----------------------------------------
+-- Helpers
+
+getConnString :: IO T.Text
+getConnString =
+  lookupEnv "GITHUB_ACTIONS" >>= \case
+    Just "true" -> pure . T.pack $ "host=postgres user=postgres password=postgres"
+    _ -> do
+      lookupEnv "DATABASE_URL" >>= \case
+        Just url -> pure $ T.pack url
+        Nothing -> error "DATABASE_URL environment variable is not set"
