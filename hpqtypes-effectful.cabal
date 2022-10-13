@@ -5,7 +5,7 @@ version:            1.0.0.0
 license:            BSD-3-Clause
 license-file:       LICENSE
 category:           Database
-maintainer:         andrzej@rybczak.net
+maintainer:         andrzej@rybczak.net, jakub.waszczuk@scrive.com
 author:             Scrive AB
 synopsis:           Adaptation of the hpqtypes library for the effectful ecosystem.
 
