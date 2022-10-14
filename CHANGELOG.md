@@ -1,5 +1,3 @@
-# Revision history for hpqtypes-effectuful
+# hpqtypes-effectful-1.0.0.0 (2022-10-??)
+* Initial release.
 
-## 0.1.0.0 -- YYYY-mm-dd
-
-* First version. Released on an unsuspecting world.

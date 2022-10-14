@@ -77,9 +77,11 @@ test-suite test
                 , tasty
                 , tasty-hunit
                 , text
-                , transformers-base
 
-  hs-source-dirs: test
+  hs-source-dirs: examples test
+
+  -- Include examples to make sure they compile.
+  other-modules:  OuterJoins
 
   type:           exitcode-stdio-1.0
   main-is:        Main.hs
