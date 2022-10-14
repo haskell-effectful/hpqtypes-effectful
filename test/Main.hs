@@ -3,11 +3,8 @@
 module Main (main) where
 
 import Control.Monad (void)
-import Control.Monad.Base (MonadBase)
-import Control.Monad.Catch (MonadMask)
 import Data.Int (Int32)
 import qualified Data.Text as T
-import Database.PostgreSQL.PQTypes hiding (queryResult)
 import Effectful
 import Effectful.Error.Static
 import Effectful.HPQTypes
@@ -30,30 +27,28 @@ tests =
 testGetLastQuery :: Assertion
 testGetLastQuery = do
   dbUrl <- getConnString
-  let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
-      connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+  let connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
     do
       -- Run the first query and perform some basic sanity checks
       let sql = mkSQL "SELECT 1"
       rowNo <- runQuery sql
       liftIO $ assertEqual "One row should be retrieved" 1 rowNo
-      queryResult :: [Int32] <- fetchMany runIdentity
-      liftIO $ assertEqual "Result should be [1]" [1] queryResult
-      (SomeSQL lastQuery) <- getLastQuery
+      result <- fetchMany (runIdentity @Int32)
+      liftIO $ assertEqual "Result should be [1]" [1] result
+      SomeSQL lastQuery <- getLastQuery
       liftIO $ assertEqual "SQL don't match" (show sql) (show lastQuery)
     do
       -- Run the second query and check that `getLastQuery` gives updated result
       let newSQL = mkSQL "SELECT 2"
       runQuery_ newSQL
-      (SomeSQL newLastQuery) <- getLastQuery
+      SomeSQL newLastQuery <- getLastQuery
       liftIO $ assertEqual "SQL don't match" (show newSQL) (show newLastQuery)
 
 testWithFrozenLastQuery :: Assertion
 testWithFrozenLastQuery = do
   dbUrl <- getConnString
-  let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
-      connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+  let connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
     let sql = mkSQL "SELECT 1"
     runQuery_ sql
@@ -67,8 +62,7 @@ testWithFrozenLastQuery = do
 testConnectionStatsWithNewConnection :: Assertion
 testConnectionStatsWithNewConnection = do
   dbUrl <- getConnString
-  let connectionSource :: ConnectionSource [MonadBase IO, MonadMask]
-      connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+  let connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
       transactionSettings =
         defaultTransactionSettings
           { tsIsolationLevel = ReadCommitted

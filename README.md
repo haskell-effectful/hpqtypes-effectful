@@ -1,23 +1,12 @@
 # hpqtypes-effectful
 
-## Description
+[![Build Status](https://github.com/haskell-effectful/hpqtypes-effectful/workflows/Haskell-CI/badge.svg?branch=master)](https://github.com/haskell-effectful/hpqtypes-effectful/actions?query=branch%3Amaster)
+[![Hackage](https://img.shields.io/hackage/v/hpqtypes-effectful.svg)](https://hackage.haskell.org/package/hpqtypes-effectful)
+[![Dependencies](https://img.shields.io/hackage-deps/v/hpqtypes-effectful.svg)](https://packdeps.haskellers.com/feed?needle=andrzej@rybczak.net)
+[![Stackage LTS](https://www.stackage.org/package/hpqtypes-effectful/badge/lts)](https://www.stackage.org/lts/package/hpqtypes-effectful)
+[![Stackage Nightly](https://www.stackage.org/package/hpqtypes-effectful/badge/nightly)](https://www.stackage.org/nightly/package/hpqtypes-effectful)
 
-`effectful` bindings for the `hpqtypes` haskell bindings for `libpqtypes`
+Adaptation of the [hpqtypes](https://hackage.haskell.org/package/hpqtypes)
+library for the effectful ecosystem.
 
-## How to use
-
-This library provides a `DB` effect that allows the use of the hpqtypes bindings for libpqtypes in the effectful ecosystem.
-
-An `Eff es` stack that contains `DB` allows the use of all functions
-with a `MonadDB` constraint.
-
-example:
-```haskell
-exampleProgram :: Eff '[DB, IOE] ()
-exampleProgram = do
-  runQuery_ $ mkSQL "CREATE TABLE some_table (field INT)"
-  runQuery_ $ mkSQL "INSERT INTO some_table VALUES (1)"
-  noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
-  liftIO $ assertEqual "Should get one result" 1 noOfResults
-  runQuery_ $ mkSQL "DROP TABLE some_table"
-```
+Examples can be found in the [examples](https://github.com/haskell-effectful/hpqtypes-effectful/tree/master/examples) directory.
