@@ -16,7 +16,7 @@ where
 
 import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Catch
-import Database.PostgreSQL.PQTypes hiding (runDBT)
+import Database.PostgreSQL.PQTypes
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
@@ -59,8 +59,7 @@ instance DB :> es => MonadDB (Eff es) where
 -- | Run the 'DB' effect with the given connection source and transaction
 -- settings.
 --
--- /Note:/ this is the @effectful@ version of
--- 'Database.PostgreSQL.PQTypes.runDBT'.
+-- /Note:/ this is the @effectful@ version of 'runDBT'.
 runDB
   :: forall es a
    . (IOE :> es)

@@ -55,10 +55,10 @@ common language
 library
   import:          language
 
-  build-depends:   base               >= 4.13      && <5
+  build-depends:   base               >= 4.13      && < 5
                  , effectful-core     >= 1.2.0.0   && < 3.0.0.0
                  , exceptions
-                 , hpqtypes           >=1.9.4.0
+                 , hpqtypes           >= 1.9.4.0   && < 1.11.0.0
 
   hs-source-dirs:   src
 
