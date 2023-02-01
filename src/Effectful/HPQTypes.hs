@@ -19,7 +19,6 @@ import Control.Monad.Catch
 import Database.PostgreSQL.PQTypes
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
-import qualified Database.PostgreSQL.PQTypes.Internal.Query as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
 import Effectful
 import Effectful.Dispatch.Dynamic
@@ -160,9 +159,9 @@ modify = DBEff . State.modify
 instance (IOE :> es) => MonadDB (DBEff es) where
   runQuery sql = do
     dbState <- get
-    (result, dbState') <- liftIO $ PQ.runQueryIO sql dbState
-    put dbState'
-    pure result
+    (rows, res) <- liftIO $ PQ.runQueryIO (PQ.dbConnection dbState) sql
+    put $ PQ.updateStateWith dbState sql res
+    pure rows
 
   getQueryResult =
     get >>= \dbState -> pure $ PQ.dbQueryResult dbState
@@ -179,9 +178,9 @@ instance (IOE :> es) => MonadDB (DBEff es) where
 
   runPreparedQuery queryName sql = do
     dbState <- get
-    (result, dbState') <- liftIO $ PQ.runPreparedQueryIO queryName sql dbState
-    put dbState'
-    pure result
+    (rows, res) <- liftIO $ PQ.runPreparedQueryIO (PQ.dbConnection dbState) queryName sql
+    put $ PQ.updateStateWith dbState sql res
+    pure rows
 
   getLastQuery = PQ.dbLastQuery <$> get
 
