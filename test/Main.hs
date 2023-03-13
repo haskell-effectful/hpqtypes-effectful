@@ -27,7 +27,7 @@ tests =
 testGetLastQuery :: Assertion
 testGetLastQuery = do
   dbUrl <- getConnString
-  let connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+  let connectionSource = simpleSource $ defaultConnectionSettings {csConnInfo = dbUrl}
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
     do
       -- Run the first query and perform some basic sanity checks
@@ -48,7 +48,7 @@ testGetLastQuery = do
 testWithFrozenLastQuery :: Assertion
 testWithFrozenLastQuery = do
   dbUrl <- getConnString
-  let connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+  let connectionSource = simpleSource $ defaultConnectionSettings {csConnInfo = dbUrl}
   void . runEff . runErrorNoCallStack @HPQTypesError . runDB (unConnectionSource connectionSource) defaultTransactionSettings $ do
     let sql = mkSQL "SELECT 1"
     runQuery_ sql
@@ -62,7 +62,7 @@ testWithFrozenLastQuery = do
 testConnectionStatsWithNewConnection :: Assertion
 testConnectionStatsWithNewConnection = do
   dbUrl <- getConnString
-  let connectionSource = simpleSource $ ConnectionSettings dbUrl Nothing []
+  let connectionSource = simpleSource $ defaultConnectionSettings {csConnInfo = dbUrl}
       transactionSettings =
         defaultTransactionSettings
           { tsIsolationLevel = ReadCommitted

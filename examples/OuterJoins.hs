@@ -6,6 +6,7 @@ module OuterJoins (runApp) where
 import Control.Monad
 import Control.Monad.Catch
 import Data.Int
+import Data.Pool
 import qualified Data.Text as T
 import Effectful
 import Effectful.HPQTypes
@@ -132,7 +133,9 @@ runApp connInfo = runEff $ do
   let cs = defaultConnectionSettings {csConnInfo = connInfo}
   withDB cs $ do
     ConnectionSource pool <- liftIO $ do
-      poolSource (cs {csComposites = ["attribute_"]}) 10 4
+      poolSource
+        (cs {csComposites = ["attribute_"]})
+        (\create destroy -> defaultPoolConfig create destroy 10 4)
     runDB pool defaultTransactionSettings $ do
       insertThings
         [ Thing
