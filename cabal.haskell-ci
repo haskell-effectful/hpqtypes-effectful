@@ -1,6 +1,6 @@
 branches:       master
 
-doctest:        <9.3
+doctest:        <9.9
 tests:          True
 benchmarks:     True
 
