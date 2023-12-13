@@ -17,7 +17,6 @@ where
 import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Catch
 import Database.PostgreSQL.PQTypes
-import GHC.Stack
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
@@ -25,6 +24,7 @@ import Effectful
 import Effectful.Dispatch.Dynamic
 import Effectful.State.Static.Local (State, evalState)
 import qualified Effectful.State.Static.Local as State
+import GHC.Stack
 
 -- | Provide the ability to access a PostgreSQL database via 'MonadDB'.
 data DB :: Effect where
