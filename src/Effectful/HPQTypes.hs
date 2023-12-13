@@ -17,6 +17,7 @@ where
 import Control.Concurrent.MVar (readMVar)
 import Control.Monad.Catch
 import Database.PostgreSQL.PQTypes
+import GHC.Stack
 import qualified Database.PostgreSQL.PQTypes.Internal.Connection as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.Notification as PQ
 import qualified Database.PostgreSQL.PQTypes.Internal.State as PQ
@@ -43,11 +44,11 @@ type instance DispatchOf DB = Dynamic
 
 -- | Orphan, canonical instance.
 instance DB :> es => MonadDB (Eff es) where
-  runQuery = send . RunQuery
+  runQuery = withFrozenCallStack $ send . RunQuery
   getQueryResult = send GetQueryResult
   clearQueryResult = send ClearQueryResult
-  getConnectionStats = send GetConnectionStats
-  runPreparedQuery qn = send . RunPreparedQuery qn
+  getConnectionStats = withFrozenCallStack $ send GetConnectionStats
+  runPreparedQuery qn = withFrozenCallStack $ send . RunPreparedQuery qn
   getLastQuery = send GetLastQuery
   getTransactionSettings = send GetTransactionSettings
   setTransactionSettings = send . SetTransactionSettings
