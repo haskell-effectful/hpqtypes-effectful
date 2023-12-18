@@ -24,6 +24,7 @@ import Effectful
 import Effectful.Dispatch.Dynamic
 import Effectful.State.Static.Local (State, evalState)
 import qualified Effectful.State.Static.Local as State
+import GHC.Stack
 
 -- | Provide the ability to access a PostgreSQL database via 'MonadDB'.
 data DB :: Effect where
@@ -43,11 +44,11 @@ type instance DispatchOf DB = Dynamic
 
 -- | Orphan, canonical instance.
 instance DB :> es => MonadDB (Eff es) where
-  runQuery = send . RunQuery
+  runQuery = withFrozenCallStack $ send . RunQuery
   getQueryResult = send GetQueryResult
   clearQueryResult = send ClearQueryResult
-  getConnectionStats = send GetConnectionStats
-  runPreparedQuery qn = send . RunPreparedQuery qn
+  getConnectionStats = withFrozenCallStack $ send GetConnectionStats
+  runPreparedQuery qn = withFrozenCallStack $ send . RunPreparedQuery qn
   getLastQuery = send GetLastQuery
   getTransactionSettings = send GetTransactionSettings
   setTransactionSettings = send . SetTransactionSettings
