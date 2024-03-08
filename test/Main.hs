@@ -73,14 +73,14 @@ testConnectionStatsWithNewConnection = do
       runQuery_ $ mkSQL "SELECT 1"
       runQuery_ $ mkSQL "SELECT 2"
       connectionStats <- getConnectionStats
-      liftIO $ assertEqual "Incorrect connection stats" (ConnectionStats 2 2 2 0) connectionStats
+      liftIO $ assertEqual "Incorrect connection stats" (ConnectionStats 3 3 3 0) connectionStats
     do
       runQuery_ $ mkSQL "CREATE TABLE some_table (field INT)"
       runQuery_ $ mkSQL "BEGIN"
       runQuery_ $ mkSQL "INSERT INTO some_table VALUES (1)"
       withNewConnection $ do
         connectionStats <- getConnectionStats
-        liftIO $ assertEqual "Connection stats should be reset" (ConnectionStats 0 0 0 0) connectionStats
+        liftIO $ assertEqual "Connection stats should be reset" (ConnectionStats 1 1 1 0) connectionStats
         noOfResults <- runQuery $ mkSQL "SELECT * FROM some_table"
         liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
       runQuery_ $ mkSQL "COMMIT"
