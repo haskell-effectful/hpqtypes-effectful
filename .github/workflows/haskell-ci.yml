@@ -195,10 +195,6 @@ jobs:
           echo "package hpqtypes-effectful" >> cabal.project
           echo "    ghc-options: -Werror=missing-methods" >> cabal.project
           cat >> cabal.project <<EOF
-          source-repository-package
-            type:     git
-            location: https://github.com/scrive/hpqtypes.git
-            tag:      498b34f35e38363a270f5af4c346c323e782a664
           EOF
           $HCPKG list --simple-output --names-only | perl -ne 'for (split /\s+/) { print "constraints: $_ installed\n" unless /^(hpqtypes-effectful)$/; }' >> cabal.project.local
           cat cabal.project
