@@ -31,6 +31,7 @@ data DB :: Effect where
   RunQuery :: IsSQL sql => sql -> DB m Int
   GetQueryResult :: FromRow row => DB m (Maybe (QueryResult row))
   ClearQueryResult :: DB m ()
+  GetBackendPid :: DB m BackendPid
   GetConnectionStats :: DB m PQ.ConnectionStats
   RunPreparedQuery :: IsSQL sql => PQ.QueryName -> sql -> DB m Int
   GetLastQuery :: DB m SomeSQL
@@ -47,6 +48,7 @@ instance DB :> es => MonadDB (Eff es) where
   runQuery = withFrozenCallStack $ send . RunQuery
   getQueryResult = send GetQueryResult
   clearQueryResult = send ClearQueryResult
+  getBackendPid = send GetBackendPid
   getConnectionStats = withFrozenCallStack $ send GetConnectionStats
   runPreparedQuery qn = withFrozenCallStack $ send . RunPreparedQuery qn
   getLastQuery = send GetLastQuery
@@ -62,7 +64,7 @@ instance DB :> es => MonadDB (Eff es) where
 -- /Note:/ this is the @effectful@ version of 'runDBT'.
 runDB
   :: forall es a
-   . (IOE :> es)
+   . IOE :> es
   => PQ.ConnectionSourceM (Eff es)
   -- ^ Connection source.
   -> TransactionSettings
@@ -74,6 +76,7 @@ runDB connectionSource transactionSettings =
     RunQuery sql -> unDBEff $ runQuery sql
     GetQueryResult -> unDBEff getQueryResult
     ClearQueryResult -> unDBEff clearQueryResult
+    GetBackendPid -> unDBEff getBackendPid
     GetConnectionStats -> unDBEff getConnectionStats
     RunPreparedQuery queryName sql -> unDBEff $ runPreparedQuery queryName sql
     GetLastQuery -> unDBEff getLastQuery
@@ -145,7 +148,7 @@ newtype DBEff es a = DBEff
 type DBState es = PQ.DBState (Eff es)
 
 -- Convenience `MonadIO` instance
-instance (IOE :> es) => MonadIO (DBEff es) where
+instance IOE :> es => MonadIO (DBEff es) where
   liftIO b = DBEff $ liftIO b
 
 get :: DBEff es (DBState es)
@@ -157,11 +160,13 @@ put = DBEff . State.put
 modify :: (DBState es -> DBState es) -> DBEff es ()
 modify = DBEff . State.modify
 
-instance (IOE :> es) => MonadDB (DBEff es) where
+instance IOE :> es => MonadDB (DBEff es) where
   runQuery sql = do
     dbState <- get
-    (rows, res) <- liftIO $ PQ.runQueryIO (PQ.dbConnection dbState) sql
-    put $ PQ.updateStateWith dbState sql res
+    (rows, newDbState) <- liftIO $ do
+      PQ.updateStateWith dbState sql
+        =<< PQ.runQueryIO (PQ.dbConnection dbState) sql
+    put newDbState
     pure rows
 
   getQueryResult =
@@ -169,6 +174,8 @@ instance (IOE :> es) => MonadDB (DBEff es) where
 
   clearQueryResult =
     modify $ \st -> st {PQ.dbQueryResult = Nothing}
+
+  getBackendPid = liftIO . PQ.getBackendPidIO . PQ.dbConnection =<< get
 
   getConnectionStats = do
     dbState <- get
@@ -179,8 +186,10 @@ instance (IOE :> es) => MonadDB (DBEff es) where
 
   runPreparedQuery queryName sql = do
     dbState <- get
-    (rows, res) <- liftIO $ PQ.runPreparedQueryIO (PQ.dbConnection dbState) queryName sql
-    put $ PQ.updateStateWith dbState sql res
+    (rows, newDbState) <- liftIO $ do
+      PQ.updateStateWith dbState sql
+        =<< PQ.runPreparedQueryIO (PQ.dbConnection dbState) queryName sql
+    put newDbState
     pure rows
 
   getLastQuery = PQ.dbLastQuery <$> get
