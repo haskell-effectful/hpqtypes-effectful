@@ -4,11 +4,11 @@
 module OuterJoins (runApp) where
 
 import Control.Monad
-import Control.Monad.Catch
 import Data.Int
 import Data.Pool
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Effectful
+import Effectful.Exception
 import Effectful.HPQTypes
 
 -- | Generic 'putStrLn'.
