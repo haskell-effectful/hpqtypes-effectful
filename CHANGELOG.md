@@ -1,4 +1,4 @@
-# hpqtypes-effectful-1.1.0.0 (????-??-??)
+# hpqtypes-effectful-1.1.0.0 (2025-11-27)
 * Compatibility with `hpqtypes` >= 1.13.0.0.
 
 # hpqtypes-effectful-1.0.2.0 (2024-03-18)
