@@ -1,1 +1,6 @@
 packages: .
+
+source-repository-package
+    type: git
+    location: https://github.com/scrive/hpqtypes
+    tag: a4785d18ff76ddb33d42d09d85d730cf6825ae39

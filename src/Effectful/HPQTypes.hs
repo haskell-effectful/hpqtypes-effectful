@@ -29,7 +29,7 @@ data DB :: Effect where
   GetLastQuery :: DB m (BackendPid, SomeSQL)
   WithFrozenLastQuery :: m a -> DB m a
   GetConnectionStats :: DB m PQ.ConnectionStats
-  GetQueryResult :: FromRow row => DB m (Maybe (QueryResult row))
+  GetQueryResult :: DB m (Maybe QueryResult)
   ClearQueryResult :: DB m ()
   GetConnectionAcquisitionMode :: DB m ConnectionAcquisitionMode
   AcquireAndHoldConnection :: IsolationLevel -> Permissions -> DB m ()
