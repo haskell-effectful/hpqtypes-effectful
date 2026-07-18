@@ -10,6 +10,7 @@ import Data.Text qualified as T
 import Effectful
 import Effectful.Exception
 import Effectful.HPQTypes
+import GHC.Generics
 
 -- | Generic 'putStrLn'.
 printLn :: IOE :> es => String -> Eff es ()
@@ -25,27 +26,17 @@ data Attribute = Attribute
   , attrKey :: !String
   , attrValues :: ![String]
   }
-  deriving (Show)
+  deriving (Generic, Show)
+
+instance FromSQL Attribute where
+  fromSQL = decodeComposite genericDecoder
 
 data Thing = Thing
   { thingID :: !Int64
   , thingName :: !String
   , thingAttributes :: ![Attribute]
   }
-  deriving (Show)
-
-type instance CompositeRow Attribute = (Int64, String, Array1 String)
-
-instance PQFormat Attribute where
-  pqFormat = "%attribute_"
-
-instance CompositeFromSQL Attribute where
-  toComposite (aid, key, Array1 values) =
-    Attribute
-      { attrID = aid
-      , attrKey = key
-      , attrValues = values
-      }
+  deriving (Generic, Show)
 
 withDB :: IOE :> es => ConnectionSettings -> Eff es () -> Eff es ()
 withDB cs = bracket_ createStructure dropStructure
@@ -80,18 +71,9 @@ withDB cs = bracket_ createStructure dropStructure
           , ", FOREIGN KEY (attribute_id) REFERENCES attributes_ (id)"
           , ")"
           ]
-      runSQL_ $
-        mconcat
-          [ "CREATE TYPE attribute_ AS ("
-          , "  id BIGINT"
-          , ", key TEXT"
-          , ", value TEXT[]"
-          , ")"
-          ]
 
     dropStructure = runDB source defaultTransactionSettings $ do
       printLn "Dropping tables..."
-      runSQL_ "DROP TYPE attribute_"
       runSQL_ "DROP TABLE values_"
       runSQL_ "DROP TABLE attributes_"
       runSQL_ "DROP TABLE things_"
@@ -102,13 +84,13 @@ insertThings = mapM_ $ \Thing {..} -> do
     rawSQL
       "INSERT INTO things_ (name) VALUES ($1) RETURNING id"
       (Identity thingName)
-  tid <- fetchOne (runIdentity @Int64)
+  tid <- fetchOne (fromSQL @Int64)
   forM_ thingAttributes $ \Attribute {..} -> do
     runQuery_ $
       rawSQL
         "INSERT INTO attributes_ (key, thing_id) VALUES ($1, $2) RETURNING id"
         (attrKey, tid)
-    aid <- fetchOne (runIdentity @Int64)
+    aid <- fetchOne (fromSQL @Int64)
     forM_ attrValues $ \value ->
       runQuery_ $
         rawSQL
@@ -118,14 +100,9 @@ insertThings = mapM_ $ \Thing {..} -> do
 selectThings :: DB :> es => Eff es [Thing]
 selectThings = do
   runSQL_ $ "SELECT t.id, t.name, ARRAY(" <> attributes <> ") FROM things_ t ORDER BY t.id"
-  fetchMany $ \(tid, name, CompositeArray1 attrs) ->
-    Thing
-      { thingID = tid
-      , thingName = name
-      , thingAttributes = attrs
-      }
+  fetchMany genericDecoder
   where
-    attributes = "SELECT (a.id, a.key, ARRAY(" <> values <> "))::attribute_ FROM attributes_ a WHERE a.thing_id = t.id ORDER BY a.id"
+    attributes = "SELECT (a.id, a.key, ARRAY(" <> values <> ")) FROM attributes_ a WHERE a.thing_id = t.id ORDER BY a.id"
     values = "SELECT v.value FROM values_ v WHERE v.attribute_id = a.id ORDER BY v.value"
 
 runApp :: T.Text -> IO ()
@@ -134,7 +111,7 @@ runApp connInfo = runEff $ do
   withDB cs $ do
     ConnectionSource pool <- liftIO $ do
       poolSource
-        (cs {csComposites = ["attribute_"]})
+        cs
         (\create destroy -> defaultPoolConfig create destroy 10 4)
     runDB pool defaultTransactionSettings $ do
       insertThings

@@ -34,7 +34,7 @@ testGetLastQuery = do
       let sql = "SELECT 1"
       rowNo <- runSQL sql
       liftIO $ assertEqual "One row should be retrieved" 1 rowNo
-      result <- fetchMany (runIdentity @Int32)
+      result <- fetchMany (fromSQL @Int32)
       liftIO $ assertEqual "Result should be [1]" [1] result
       (_, SomeSQL lastQuery) <- getLastQuery
       liftIO $ assertEqual "SQL don't match" (show sql) (show lastQuery)

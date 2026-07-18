@@ -6,11 +6,11 @@
 #
 #   haskell-ci regenerate
 #
-# For more information, see https://github.com/haskell-CI/haskell-ci
+# For more information, see https://github.com/arybczak/haskell-ci
 #
-# version: 0.19.20251118
+# version: 0.19.20260424
 #
-# REGENDATA ("0.19.20251118",["github","--config=cabal.haskell-ci","cabal.project"])
+# REGENDATA ("0.19.20260424",["github","--config=cabal.haskell-ci","cabal.project"])
 #
 name: Haskell-CI
 on:
@@ -23,6 +23,11 @@ on:
   merge_group:
     branches:
       - master
+  workflow_dispatch:
+    {}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   linux:
     name: Haskell-CI - Linux - ${{ matrix.compiler }}
@@ -30,10 +35,10 @@ jobs:
     timeout-minutes:
       60
     container:
-      image: buildpack-deps:jammy
+      image: buildpack-deps:resolute
     services:
       postgres:
-        image: postgres:14
+        image: postgres:18
         env:
           POSTGRES_PASSWORD: postgres
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
@@ -41,14 +46,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - compiler: ghc-9.14.0.20251104
+          - compiler: ghc-9.14.1
             compilerKind: ghc
-            compilerVersion: 9.14.0.20251104
-            setup-method: ghcup-prerelease
+            compilerVersion: 9.14.1
+            setup-method: ghcup
             allow-failure: false
-          - compiler: ghc-9.12.2
+          - compiler: ghc-9.12.4
             compilerKind: ghc
-            compilerVersion: 9.12.2
+            compilerVersion: 9.12.4
             setup-method: ghcup
             allow-failure: false
           - compiler: ghc-9.10.3
@@ -66,22 +71,12 @@ jobs:
             compilerVersion: 9.6.7
             setup-method: ghcup
             allow-failure: false
-          - compiler: ghc-9.4.8
-            compilerKind: ghc
-            compilerVersion: 9.4.8
-            setup-method: ghcup
-            allow-failure: false
-          - compiler: ghc-9.2.8
-            compilerKind: ghc
-            compilerVersion: 9.2.8
-            setup-method: ghcup
-            allow-failure: false
       fail-fast: false
     steps:
       - name: apt-get install
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo5
+          apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common
       - name: Install GHCup
         run: |
           mkdir -p "$HOME/.ghcup/bin"
@@ -105,21 +100,6 @@ jobs:
           HCKIND: ${{ matrix.compilerKind }}
           HCNAME: ${{ matrix.compiler }}
           HCVER: ${{ matrix.compilerVersion }}
-      - name: Install GHC (GHCup prerelease)
-        if: matrix.setup-method == 'ghcup-prerelease'
-        run: |
-          "$HOME/.ghcup/bin/ghcup" config add-release-channel prereleases
-          "$HOME/.ghcup/bin/ghcup" install ghc "$HCVER" || (cat "$HOME"/.ghcup/logs/*.* && false)
-          HC=$("$HOME/.ghcup/bin/ghcup" whereis ghc "$HCVER")
-          HCPKG=$(echo "$HC" | sed 's#ghc$#ghc-pkg#')
-          HADDOCK=$(echo "$HC" | sed 's#ghc$#haddock#')
-          echo "HC=$HC" >> "$GITHUB_ENV"
-          echo "HCPKG=$HCPKG" >> "$GITHUB_ENV"
-          echo "HADDOCK=$HADDOCK" >> "$GITHUB_ENV"
-        env:
-          HCKIND: ${{ matrix.compilerKind }}
-          HCNAME: ${{ matrix.compiler }}
-          HCVER: ${{ matrix.compilerVersion }}
       - name: Set PATH and environment variables
         run: |
           echo "$HOME/.cabal/bin" >> $GITHUB_PATH
@@ -130,7 +110,7 @@ jobs:
           echo "HCNUMVER=$HCNUMVER" >> "$GITHUB_ENV"
           echo "ARG_TESTS=--enable-tests" >> "$GITHUB_ENV"
           echo "ARG_BENCH=--enable-benchmarks" >> "$GITHUB_ENV"
-          if [ $((HCNUMVER >= 91400)) -ne 0 ] ; then echo "HEADHACKAGE=true" >> "$GITHUB_ENV" ; else echo "HEADHACKAGE=false" >> "$GITHUB_ENV" ; fi
+          echo "HEADHACKAGE=false" >> "$GITHUB_ENV"
           echo "ARG_COMPILER=--$HCKIND --with-compiler=$HC" >> "$GITHUB_ENV"
         env:
           HCKIND: ${{ matrix.compilerKind }}
@@ -158,18 +138,6 @@ jobs:
           repository hackage.haskell.org
             url: http://hackage.haskell.org/
           EOF
-          if $HEADHACKAGE; then
-          cat >> $CABAL_CONFIG <<EOF
-          repository head.hackage.ghc.haskell.org
-             url: https://ghc.gitlab.haskell.org/head.hackage/
-             secure: True
-             root-keys: 7541f32a4ccca4f97aea3b22f5e593ba2c0267546016b992dfadcd2fe944e55d
-                        26021a13b401500c8eb2761ca95c61f2d625bfef951b939a8124ed12ecf07329
-                        f76d08be13e9a61a377a85e2fb63f4c5435d40f8feb3e12eb05905edb8cdea89
-             key-threshold: 3
-          active-repositories: hackage.haskell.org, head.hackage.ghc.haskell.org:override
-          EOF
-          fi
           cat >> $CABAL_CONFIG <<EOF
           program-default-options
             ghc-options: $GHCJOBS +RTS -M3G -RTS
@@ -184,9 +152,9 @@ jobs:
         run: |
           $CABAL v2-update -v
       - name: cache (tools)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
-          key: ${{ runner.os }}-${{ matrix.compiler }}-tools-e93c7dce
+          key: ${{ runner.os }}-${{ matrix.compiler }}-tools-6bbef4de
           path: ~/.haskell-ci-tools
       - name: install cabal-plan
         run: |
@@ -199,16 +167,16 @@ jobs:
           cabal-plan --version
       - name: install doctest
         run: |
-          if [ $((HCNUMVER < 91000)) -ne 0 ] ; then $CABAL --store-dir=$HOME/.haskell-ci-tools/store v2-install $ARG_COMPILER --ignore-project -j2 doctest --constraint='doctest ^>=0.22.0' ; fi
+          if [ $((HCNUMVER < 91000)) -ne 0 ] ; then $CABAL --store-dir=$HOME/.haskell-ci-tools/store v2-install $ARG_COMPILER --ignore-project -j2 doctest --constraint='doctest ^>=0.25.0' ; fi
           if [ $((HCNUMVER < 91000)) -ne 0 ] ; then doctest --version ; fi
       - name: save cache (tools)
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
-          key: ${{ runner.os }}-${{ matrix.compiler }}-tools-e93c7dce
+          key: ${{ runner.os }}-${{ matrix.compiler }}-tools-6bbef4de
           path: ~/.haskell-ci-tools
       - name: checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: source
       - name: initial cabal.project for sdist
@@ -234,15 +202,16 @@ jobs:
           echo "packages: ${PKGDIR_hpqtypes_effectful}" >> cabal.project
           echo "package hpqtypes-effectful" >> cabal.project
           echo "    ghc-options: -Werror=missing-methods -Werror=missing-fields" >> cabal.project
-          if [ $((HCNUMVER >= 90400)) -ne 0 ] ; then echo "package hpqtypes-effectful" >> cabal.project ; fi
-          if [ $((HCNUMVER >= 90400)) -ne 0 ] ; then echo "    ghc-options: -Werror=unused-packages" >> cabal.project ; fi
+          echo "package hpqtypes-effectful" >> cabal.project
+          echo "    ghc-options: -Werror=unused-packages" >> cabal.project
           echo "package hpqtypes-effectful" >> cabal.project
           echo "    ghc-options: -Werror=incomplete-patterns -Werror=incomplete-uni-patterns" >> cabal.project
           cat >> cabal.project <<EOF
+          source-repository-package
+            type:     git
+            location: https://github.com/scrive/hpqtypes
+            tag:      a4785d18ff76ddb33d42d09d85d730cf6825ae39
           EOF
-          if $HEADHACKAGE; then
-          echo "allow-newer: $($HCPKG list --simple-output | sed -E 's/([a-zA-Z-]+)-[0-9.]+/*:\1,/g')" >> cabal.project
-          fi
           $HCPKG list --simple-output --names-only | perl -ne 'for (split /\s+/) { print "constraints: any.$_ installed\n" unless /^(hpqtypes-effectful)$/; }' >> cabal.project.local
           cat cabal.project
           cat cabal.project.local
@@ -251,7 +220,7 @@ jobs:
           $CABAL v2-build $ARG_COMPILER $ARG_TESTS $ARG_BENCH --dry-run all
           cabal-plan
       - name: restore cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           key: ${{ runner.os }}-${{ matrix.compiler }}-${{ github.sha }}
           path: ~/.cabal/store
@@ -286,7 +255,7 @@ jobs:
           $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
       - name: save cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           key: ${{ runner.os }}-${{ matrix.compiler }}-${{ github.sha }}
           path: ~/.cabal/store

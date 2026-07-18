@@ -1,3 +1,8 @@
+# hpqtypes-effectful-2.0.0.0 (2026-??-??)
+* Compatibility with `hpqtypes` >= 2.0.0.0. In line with the removal of the
+  `FromRow` class, the `GetQueryResult` constructor of the `DB` effect no longer
+  takes a `FromRow` constraint and `QueryResult` is no longer parameterized.
+
 # hpqtypes-effectful-1.1.0.0 (2025-11-27)
 * Compatibility with `hpqtypes` >= 1.13.0.0.
 
