@@ -78,9 +78,13 @@ test-suite test
                 , tasty-hunit
                 , text
 
-  hs-source-dirs: examples test
+  hs-source-dirs: test
+  other-modules:  Test.Connection
+                  Test.Env
+                  Test.LastQuery
 
   -- Include examples to make sure they compile.
+  hs-source-dirs: examples
   other-modules:  OuterJoins
 
   type:           exitcode-stdio-1.0
