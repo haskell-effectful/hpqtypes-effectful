@@ -5,11 +5,13 @@ module Test.Env
   ) where
 
 import Effectful
+import Effectful.Concurrent
 import Effectful.HPQTypes
 
 newtype TestData = TestData
   { tdConnSource :: forall es. IOE :> es => ConnectionSourceM (Eff es)
   }
 
-runTest :: TestData -> Eff [DB, IOE] a -> IO a
-runTest td = runEff . runDB (tdConnSource td) defaultTransactionSettings
+runTest :: TestData -> Eff [DB, Concurrent, IOE] a -> IO a
+runTest td =
+  runEff . runConcurrent . runDB (tdConnSource td) defaultTransactionSettings
