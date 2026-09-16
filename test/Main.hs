@@ -73,16 +73,28 @@ testConnectionStatsWithNewConnection = do
         (runSQL_ "CREATE TABLE some_table (field INT)")
         (runSQL_ "DROP TABLE some_table")
       $ do
-        runSQL_ "BEGIN"
-        runSQL_ "INSERT INTO some_table VALUES (1)"
-        withNewConnection $ do
-          newStats <- getConnectionStats
-          liftIO $ assertEqual "Connection stats should be reset" 0 $ statsQueries newStats
-          noOfResults <- runSQL "SELECT * FROM some_table"
-          liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
-        runSQL_ "COMMIT"
+        withManualTransaction $ do
+          runSQL_ "INSERT INTO some_table VALUES (1)"
+          withNewConnection $ do
+            newStats <- getConnectionStats
+            liftIO $ assertEqual "Connection stats should be reset" 0 $ statsQueries newStats
+            noOfResults <- runSQL "SELECT * FROM some_table"
+            liftIO $ assertEqual "Results should not be visible yet" 0 noOfResults
         noOfResults <- runSQL "SELECT * FROM some_table"
         liftIO $ assertEqual "Results should be visible" 1 noOfResults
+  where
+    -- Without the rollback the DROP TABLE of the enclosing bracket_ runs
+    -- inside the failed transaction and is discarded with it.
+    withManualTransaction :: DB :> es => Eff es a -> Eff es a
+    withManualTransaction action =
+      fst
+        <$> generalBracket
+          (runSQL_ "BEGIN")
+          ( \() -> \case
+              ExitCaseSuccess _ -> runSQL_ "COMMIT"
+              _ -> runSQL_ "ROLLBACK"
+          )
+          (\() -> action)
 
 ----------------------------------------
 -- Helpers
