@@ -1,3 +1,13 @@
+# hpqtypes-effectful-1.2.0.0 (????-??-??)
+* Compatibility with `hpqtypes` >= 1.15.0.0.
+* Rename the `WithNewConnection` constructor of the `DB` effect to
+  `WithNewSession`, to match the rename of `withNewConnection` to
+  `withNewSession` in `hpqtypes`.
+* A database session is now bound to the thread that started it. If another
+  thread runs a query in that session, the query throws `ThreadMismatchError`.
+  To run queries from another thread, start a separate session there with
+  `withNewSession`.
+
 # hpqtypes-effectful-1.1.0.0 (2025-11-27)
 * Compatibility with `hpqtypes` >= 1.13.0.0.
 
