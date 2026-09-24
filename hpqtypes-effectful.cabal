@@ -12,11 +12,11 @@ synopsis:           Adaptation of the hpqtypes library for the effectful ecosyst
 description:        Adaptation of the @<https://hackage.haskell.org/package/hpqtypes hpqtypes>@ library for the @<https://hackage.haskell.org/package/effectful effectful>@ ecosystem.
 homepage:           https://github.com/haskell-effectful/hpqtypes-effectful
 
-extra-source-files:
+extra-doc-files:
   CHANGELOG.md
   README.md
 
-tested-with: GHC == { 9.2.8, 9.4.8, 9.6.7, 9.8.4, 9.10.3, 9.12.4, 9.14.1 }
+tested-with: GHC ^>= { 9.2, 9.4, 9.6, 9.8, 9.10, 9.12, 9.14 }
 
 bug-reports: https://github.com/haskell-effectful/hpqtypes-effectful/issues
 source-repository head
@@ -58,8 +58,8 @@ library
   import:          language
 
   build-depends:   base               >= 4.16      && < 5
-                 , effectful-core     >= 2.5.0.0   && < 3.0.0.0
-                 , hpqtypes           >= 1.13.0.0  && < 1.15.0.0
+                 , effectful-core     >= 2.5.0.0   && < 3
+                 , hpqtypes           >= 1.13.0.0  && < 1.15
 
   hs-source-dirs:   src
 
