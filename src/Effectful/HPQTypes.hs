@@ -35,7 +35,7 @@ data DB :: Effect where
   AcquireAndHoldConnection :: IsolationLevel -> Permissions -> DB m ()
   UnsafeAcquireOnDemandConnection :: DB m ()
   GetNotification :: Int -> DB m (Maybe PQ.Notification)
-  WithNewConnection :: m a -> DB m a
+  WithNewSession :: m a -> DB m a
 
 type instance DispatchOf DB = Dynamic
 
@@ -52,10 +52,15 @@ instance DB :> es => MonadDB (Eff es) where
   acquireAndHoldConnection isoLevel = send . AcquireAndHoldConnection isoLevel
   unsafeAcquireOnDemandConnection = send UnsafeAcquireOnDemandConnection
   getNotification = send . GetNotification
-  withNewConnection = send . WithNewConnection
+  withNewSession = send . WithNewSession
 
 -- | Run the 'DB' effect with the given connection source and transaction
 -- settings.
+--
+-- The session is bound to the calling thread. If another thread invokes a
+-- 'MonadDB' operation that uses the connection, the operation throws
+-- 'ThreadMismatchError' wrapped in 'DBException'. To run queries from another
+-- thread, start a separate session there with 'withNewSession'.
 --
 -- /Note:/ this is the @effectful@ version of 'runDBT'.
 runDB
@@ -69,10 +74,10 @@ runDB
 runDB cs0 ts0 m = PQ.withConnectionData cs0 ts0 $ \cd0 -> do
   reinterpretWith (State.evalState $ PQ.mkDBState cd0 ts0) m $ \env -> \case
     RunQuery sql -> modifyState $ \st -> withFrozenCallStack $ do
-      PQ.withConnection (PQ.dbConnectionData st) $ \conn -> do
+      PQ.withConnection st $ \conn -> do
         liftIO $ PQ.updateStateWith conn st sql =<< PQ.runQueryIO conn sql
     RunPreparedQuery name sql -> modifyState $ \st -> withFrozenCallStack $ do
-      PQ.withConnection (PQ.dbConnectionData st) $ \conn -> do
+      PQ.withConnection st $ \conn -> do
         liftIO $ PQ.updateStateWith conn st sql =<< PQ.runPreparedQueryIO conn name sql
     GetLastQuery -> PQ.dbLastQuery <$> get
     WithFrozenLastQuery action -> do
@@ -87,15 +92,13 @@ runDB cs0 ts0 m = PQ.withConnectionData cs0 ts0 $ \cd0 -> do
     GetConnectionAcquisitionMode -> do
       liftIO . PQ.getConnectionAcquisitionModeIO . PQ.dbConnectionData =<< get
     AcquireAndHoldConnection isolationLevel permissions -> withState $ \st -> do
-      PQ.changeAcquisitionModeTo
-        (AcquireAndHold isolationLevel permissions)
-        (PQ.dbConnectionData st)
+      PQ.changeAcquisitionModeTo (AcquireAndHold isolationLevel permissions) st
     UnsafeAcquireOnDemandConnection -> withState $ \st -> do
-      PQ.changeAcquisitionModeTo AcquireOnDemand (PQ.dbConnectionData st)
+      PQ.changeAcquisitionModeTo AcquireOnDemand st
     GetNotification time -> withState $ \st -> do
-      PQ.withConnection (PQ.dbConnectionData st) $ \conn -> do
+      PQ.withConnection st $ \conn -> do
         liftIO $ PQ.getNotificationIO conn time
-    WithNewConnection action -> do
+    WithNewSession action -> do
       st <- get
       cam <- liftIO . PQ.getConnectionAcquisitionModeIO $ PQ.dbConnectionData st
       let cs = PQ.getConnectionSource $ PQ.dbConnectionData st
