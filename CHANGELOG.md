@@ -1,4 +1,4 @@
-# hpqtypes-effectful-1.2.0.0 (????-??-??)
+# hpqtypes-effectful-1.2.0.0 (2026-09-28)
 * Compatibility with `hpqtypes` >= 1.15.0.0.
 * Rename the `WithNewConnection` constructor of the `DB` effect to
   `WithNewSession`, to match the rename of `withNewConnection` to
